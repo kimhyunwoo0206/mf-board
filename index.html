@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MF 발주 현황</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    <style>
+        body { background-color: #121212; color: #ffffff; font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 15px; }
+        h1 { font-size: 1.8rem; text-align: center; color: #4CAF50; margin: 10px 0; }
+        .status-banner { font-size: 1.5rem; font-weight: bold; text-align: center; background: #333; padding: 15px; border-radius: 10px; margin-bottom: 20px; color: #FFEB3B; }
+        .closed { background: #F44336 !important; color: white !important; }
+        .section-title { font-size: 1.4rem; border-bottom: 2px solid #555; padding-bottom: 5px; margin-top: 30px; color: #bbb; }
+        .total-list { list-style: none; padding: 0; margin: 0; }
+        .total-item { font-size: 1.6rem; font-weight: bold; background: #1E1E1E; margin-bottom: 10px; padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid #2196F3; }
+        .total-count { color: #FF9800; font-size: 1.8rem; }
+        .history-container { margin-top: 20px; }
+        .history-slot { background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .history-title { font-size: 1.2rem; font-weight: bold; color: #8BC34A; margin-bottom: 10px; }
+        .history-list { list-style: none; padding: 0; margin: 0; }
+        .history-list li { font-size: 1.2rem; display: flex; justify-content: space-between; margin-bottom: 5px; color: #ddd; }
+    </style>
+</head>
+<body>
+    <h1 id="today-date">오늘의 MF 발주</h1>
+    <div id="status-banner" class="status-banner">데이터 대기 중...</div>
+
+    <div class="section-title">🔥 최종 합계 (누적)</div>
+    <ul id="total-list" class="total-list"></ul>
+
+    <div class="section-title">🕒 시간대별 입력 내역</div>
+    <div id="history-container" class="history-container"></div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0",
+            authDomain: "coupang-mf.firebaseapp.com",
+            databaseURL: "https://coupang-mf-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "coupang-mf",
+            storageBucket: "coupang-mf.firebasestorage.app",
+            messagingSenderId: "12362663151",
+            appId: "1:12362663151:web:51e7acce47f166a88b871a",
+            measurementId: "G-JBKQVKJXRE"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('today-date').innerText = `${today} MF 발주`;
+
+        db.ref('mf_orders/' + today).on('value', (snapshot) => {
+            const data = snapshot.val();
+            const totalListEl = document.getElementById('total-list');
+            const historyContainerEl = document.getElementById('history-container');
+            const statusBanner = document.getElementById('status-banner');
+            
+            totalListEl.innerHTML = '';
+            historyContainerEl.innerHTML = '';
+
+            if (data && data.slots) {
+                statusBanner.innerText = data.lastStatus || "진행 중";
+                if (data.lastStatus && data.lastStatus.includes('마감')) {
+                    statusBanner.classList.add('closed');
+                } else {
+                    statusBanner.classList.remove('closed');
+                }
+
+                let totalItems = {}; 
+                const slotKeys = Object.keys(data.slots).sort();
+                
+                slotKeys.forEach(key => {
+                    const slotData = data.slots[key];
+                    const items = slotData.items;
+                    
+                    for (const [name, count] of Object.entries(items)) {
+                        if (!totalItems[name]) totalItems[name] = 0;
+                        totalItems[name] += parseInt(count);
+                    }
+
+                    let historyHtml = `<div class="history-slot"><div class="history-title">${slotData.label}</div><ul class="history-list">`;
+                    for (const [name, count] of Object.entries(items)) {
+                        historyHtml += `<li><span>${name}</span> <span>${count}건</span></li>`;
+                    }
+                    historyHtml += `</ul></div>`;
+                    historyContainerEl.innerHTML += historyHtml;
+                });
+
+                for (const [name, count] of Object.entries(totalItems)) {
+                    totalListEl.innerHTML += `
+                        <li class="total-item">
+                            <span class="item-name">${name}</span> 
+                            <span class="total-count">${count}건</span>
+                        </li>`;
+                }
+            } else {
+                statusBanner.innerText = "아직 등록된 발주가 없습니다.";
+                statusBanner.classList.remove('closed');
+            }
+        });
+    </script>
+</body>
+</html>
