@@ -26,7 +26,7 @@
     <h1 id="today-date">오늘의 MF 발주</h1>
     <div id="status-banner" class="status-banner">데이터 대기 중...</div>
 
-    <div class="section-title">🔥 최종 합계 (누적)</div>
+    <div class="section-title">🔥 최종 합계 (누적 총합)</div>
     <ul id="total-list" class="total-list"></ul>
 
     <div class="section-title">🕒 시간대별 입력 내역</div>
@@ -67,6 +67,7 @@
                 }
 
                 let totalItems = {}; 
+                let grandTotalCount = 0;
                 const slotKeys = Object.keys(data.slots).sort();
                 
                 slotKeys.forEach(key => {
@@ -74,8 +75,10 @@
                     const items = slotData.items;
                     
                     for (const [name, count] of Object.entries(items)) {
+                        const val = parseInt(count) || 0;
                         if (!totalItems[name]) totalItems[name] = 0;
-                        totalItems[name] += parseInt(count);
+                        totalItems[name] += val;
+                        grandTotalCount += val;
                     }
 
                     let historyHtml = `<div class="history-slot"><div class="history-title">${slotData.label}</div><ul class="history-list">`;
@@ -86,13 +89,22 @@
                     historyContainerEl.innerHTML += historyHtml;
                 });
 
+                // 품목별 누적 합계 표시
                 for (const [name, count] of Object.entries(totalItems)) {
                     totalListEl.innerHTML += `
                         <li class="total-item">
-                            <span class="item-name">${name}</span> 
+                            <span class="item-name">* ${name}</span> 
                             <span class="total-count">${count}건</span>
                         </li>`;
                 }
+
+                // 총 건수 카드 추가
+                totalListEl.innerHTML += `
+                    <li class="total-item" style="background: #1e2a38; border-left-color: #FF9800;">
+                        <span class="item-name" style="color: #FFEB3B;">총건수</span> 
+                        <span class="total-count" style="color: #FFEB3B;">${grandTotalCount}건</span>
+                    </li>`;
+
             } else {
                 statusBanner.innerText = "아직 등록된 발주가 없습니다.";
                 statusBanner.classList.remove('closed');
