@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MF 발주 입력</title>
+    <title>MF 발주 입력 (취소가능)</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
     <style>
@@ -21,9 +21,9 @@
 <body>
     <div class="container">
         <h2>MF 발주 업데이트</h2>
-        <p style="font-size: 14px; color: #666;">젬에서 복사한 '품명 : 건수' (추가분)만 붙여넣으세요.</p>
+        <p style="font-size: 14px; color: #666;">젬에서 복사한 내용을 붙여넣으세요.<br><span style="color:red; font-weight:bold;">※ 취소 시 숫자 앞에 '취소' 또는 '-' 기호를 붙이세요. (예: 취소 1건, -1건)</span></p>
         
-        <textarea id="order-input" placeholder="- 손질백조기 500g : 3건&#10;- 생물 대합 600g : 2건"></textarea>
+        <textarea id="order-input" placeholder="- 손질백조기 500g : 3건&#10;- 생물 대합 600g : 취소 1건"></textarea>
         
         <div class="time-selector">
             <input type="radio" name="time-slot" id="t1" value="1_slot_8|8시 최초입력" checked>
@@ -66,9 +66,18 @@
                 if(line.includes(':') || line.includes('：')) {
                     const parts = line.replace(/^-/, '').split(/[:：]/);
                     const name = parts[0].trim();
-                    const countStr = parts[1].replace(/[^0-9]/g, '');
+                    const rightPart = parts[1];
+                    
+                    // '취소' 또는 '-' 글자가 있으면 마이너스로 인식하도록 추가
+                    const isCancel = rightPart.includes('취소') || rightPart.includes('-');
+                    const countStr = rightPart.replace(/[^0-9]/g, '');
+                    
                     if (name && countStr) {
-                        items[name] = parseInt(countStr);
+                        let val = parseInt(countStr);
+                        if (isCancel) {
+                            val = -val; // 음수로 변환
+                        }
+                        items[name] = val;
                     }
                 }
             });
