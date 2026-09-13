@@ -52,12 +52,27 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
+        function getTodayKST() {
+            const curr = new Date();
+            const utc = curr.getTime() + (curr.getTimezoneOffset() * 60 * 1000);
+            const kstGap = 9 * 60 * 60 * 1000;
+            const kstDate = new Date(utc + kstGap);
+            
+            const year = kstDate.getFullYear();
+            const month = String(kstDate.getMonth() + 1).padStart(2, '0');
+            const day = String(kstDate.getDate()).padStart(2, '0');
+            
+            return `${year}-${month}-${day}`;
+        }
+
         function submitData() {
             const rawText = document.getElementById('order-input').value;
             const selectedVal = document.querySelector('input[name="time-slot"]:checked').value;
             const slotKey = selectedVal.split('|')[0];
             const slotLabel = selectedVal.split('|')[1];
-            const today = new Date().toISOString().split('T')[0];
+            
+            // KST 기준 오늘 날짜 생성
+            const today = getTodayKST();
 
             const lines = rawText.split('\n');
             let items = {};
@@ -68,7 +83,6 @@
                     const name = parts[0].trim();
                     const rightPart = parts[1];
                     
-                    // '취소' 또는 '-' 글자가 있으면 마이너스로 인식하도록 추가
                     const isCancel = rightPart.includes('취소') || rightPart.includes('-');
                     const countStr = rightPart.replace(/[^0-9]/g, '');
                     
@@ -96,7 +110,7 @@
             updateData[`mf_orders/${today}/lastStatus`] = slotLabel;
 
             db.ref().update(updateData).then(() => {
-                alert(`${slotLabel} 데이터가 성공적으로 반영되었습니다!`);
+                alert(`${slotLabel} 데이터가 성공적으로 반영되었습니다! (기준일: ${today})`);
                 document.getElementById('order-input').value = '';
             }).catch((error) => {
                 alert('에러 발생: ' + error);
