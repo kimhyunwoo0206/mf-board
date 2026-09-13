@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MF 발주 입력</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 15px; background: #f4f4f4; }
+        .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #333; }
+        textarea { width: 100%; height: 150px; font-size: 16px; padding: 10px; margin-bottom: 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; }
+        .time-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .time-selector label { padding: 15px 5px; background: #e0e0e0; border-radius: 5px; cursor: pointer; font-weight: bold; text-align: center; }
+        .time-selector input[type="radio"]:checked + label { background: #2196F3; color: white; }
+        input[type="radio"] { display: none; }
+        button { width: 100%; padding: 15px; font-size: 18px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>MF 발주 업데이트</h2>
+        <p style="font-size: 14px; color: #666;">젬에서 복사한 '품명 : 건수' (추가분)만 붙여넣으세요.</p>
+        
+        <textarea id="order-input" placeholder="- 손질백조기 500g : 3건&#10;- 생물 대합 600g : 2건"></textarea>
+        
+        <div class="time-selector">
+            <input type="radio" name="time-slot" id="t1" value="1_slot_8|8시 최초입력" checked>
+            <label for="t1">8시 최초입력</label>
+            <input type="radio" name="time-slot" id="t2" value="2_slot_10|10시 추가">
+            <label for="t2">10시 추가</label>
+            <input type="radio" name="time-slot" id="t3" value="3_slot_12|12시 추가">
+            <label for="t3">12시 추가</label>
+            <input type="radio" name="time-slot" id="t4" value="4_slot_13|13시 최종마감">
+            <label for="t4">13시 마감</label>
+        </div>
+        <button onclick="submitData()">스마트폰으로 전송하기</button>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0",
+            authDomain: "coupang-mf.firebaseapp.com",
+            databaseURL: "https://coupang-mf-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "coupang-mf",
+            storageBucket: "coupang-mf.firebasestorage.app",
+            messagingSenderId: "12362663151",
+            appId: "1:12362663151:web:51e7acce47f166a88b871a",
+            measurementId: "G-JBKQVKJXRE"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        function submitData() {
+            const rawText = document.getElementById('order-input').value;
+            const selectedVal = document.querySelector('input[name="time-slot"]:checked').value;
+            const slotKey = selectedVal.split('|')[0];
+            const slotLabel = selectedVal.split('|')[1];
+            const today = new Date().toISOString().split('T')[0];
+
+            const lines = rawText.split('\n');
+            let items = {};
+            
+            lines.forEach(line => {
+                if(line.includes(':') || line.includes('：')) {
+                    const parts = line.replace(/^-/, '').split(/[:：]/);
+                    const name = parts[0].trim();
+                    const countStr = parts[1].replace(/[^0-9]/g, '');
+                    if (name && countStr) {
+                        items[name] = parseInt(countStr);
+                    }
+                }
+            });
+
+            if(Object.keys(items).length === 0) {
+                alert('입력된 품목 데이터가 없거나 양식이 맞지 않습니다.');
+                return;
+            }
+
+            const updateData = {};
+            updateData[`mf_orders/${today}/slots/${slotKey}`] = {
+                label: slotLabel,
+                items: items,
+                updatedAt: new Date().toISOString()
+            };
+            updateData[`mf_orders/${today}/lastStatus`] = slotLabel;
+
+            db.ref().update(updateData).then(() => {
+                alert(`${slotLabel} 데이터가 성공적으로 반영되었습니다!`);
+                document.getElementById('order-input').value = '';
+            }).catch((error) => {
+                alert('에러 발생: ' + error);
+            });
+        }
+    </script>
+</body>
+</html>
