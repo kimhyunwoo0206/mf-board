@@ -24,6 +24,8 @@
 </head>
 <body>
     <h1 id="today-date">오늘의 MF 발주</h1>
+    <label for="order-date">조회 날짜</label>
+    <input id="order-date" type="date" style="font-size:1.1rem;padding:8px;margin:8px 0 16px">
     <div id="status-banner" class="status-banner">데이터 대기 중...</div>
 
     <div class="section-title">🔥 최종 합계 (누적 총합)</div>
@@ -60,10 +62,21 @@
             return `${year}-${month}-${day}`;
         }
 
-        const today = getTodayKST();
-        document.getElementById('today-date').innerText = `${today} MF 발주`;
-
-        db.ref('mf_orders/' + today).on('value', (snapshot) => {
+        const dateInput = document.getElementById('order-date');
+        dateInput.value = getTodayKST();
+        let activeRef = null;
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>"']/g, char => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[char]);
+        }
+        function showDate() {
+          if (activeRef) activeRef.off();
+          const selectedDate = dateInput.value;
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return;
+          document.getElementById('today-date').innerText = `${selectedDate} MF 발주`;
+          activeRef = db.ref('mf_orders/' + selectedDate);
+          activeRef.on('value', (snapshot) => {
             const data = snapshot.val();
             const totalListEl = document.getElementById('total-list');
             const historyContainerEl = document.getElementById('history-container');
@@ -86,7 +99,7 @@
                 
                 slotKeys.forEach(key => {
                     const slotData = data.slots[key];
-                    const items = slotData.items;
+                    const items = slotData.items || {};
                     
                     for (const [name, count] of Object.entries(items)) {
                         const val = parseInt(count) || 0;
@@ -95,19 +108,19 @@
                         grandTotalCount += val;
                     }
 
-                    let historyHtml = `<div class="history-slot"><div class="history-title">${slotData.label}</div><ul class="history-list">`;
+                    let historyHtml = `<div class="history-slot"><div class="history-title">${escapeHtml(slotData.label || key)}</div><ul class="history-list">`;
                     for (const [name, count] of Object.entries(items)) {
-                        historyHtml += `<li><span>${name}</span> <span>${count}건</span></li>`;
+                        historyHtml += `<li><span>${escapeHtml(name)}</span> <span>${Number(count) || 0}건</span></li>`;
                     }
                     historyHtml += `</ul></div>`;
                     historyContainerEl.innerHTML += historyHtml;
                 });
 
                 // 품목별 누적 합계 표시
-                for (const [name, count] of Object.entries(totalItems)) {
+                for (const [name, count] of Object.entries(totalItems).sort((a,b)=>a[0].localeCompare(b[0],'ko'))) {
                     totalListEl.innerHTML += `
                         <li class="total-item">
-                            <span class="item-name">* ${name}</span> 
+                            <span class="item-name">* ${escapeHtml(name)}</span> 
                             <span class="total-count">${count}건</span>
                         </li>`;
                 }
@@ -123,7 +136,13 @@
                 statusBanner.innerText = "아직 등록된 발주가 없습니다.";
                 statusBanner.classList.remove('closed');
             }
-        });
+          }, error => {
+            document.getElementById('status-banner').innerText = '데이터를 읽지 못했습니다: ' + error.message;
+          });
+        }
+        dateInput.addEventListener('change', showDate);
+        showDate();
     </script>
 </body>
 </html>
+
