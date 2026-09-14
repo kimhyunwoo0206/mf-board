@@ -2,37 +2,53 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MF 발주 현황</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
     <style>
-        body { background-color: #121212; color: #ffffff; font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 15px; }
-        h1 { font-size: 1.8rem; text-align: center; color: #4CAF50; margin: 10px 0; }
-        .status-banner { font-size: 1.5rem; font-weight: bold; text-align: center; background: #333; padding: 15px; border-radius: 10px; margin-bottom: 20px; color: #FFEB3B; }
-        .closed { background: #F44336 !important; color: white !important; }
-        .section-title { font-size: 1.4rem; border-bottom: 2px solid #555; padding-bottom: 5px; margin-top: 30px; color: #bbb; }
-        .total-list { list-style: none; padding: 0; margin: 0; }
-        .total-item { font-size: 1.6rem; font-weight: bold; background: #1E1E1E; margin-bottom: 10px; padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid #2196F3; }
-        .total-count { color: #FF9800; font-size: 1.8rem; }
-        .history-container { margin-top: 20px; }
-        .history-slot { background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        .history-title { font-size: 1.2rem; font-weight: bold; color: #8BC34A; margin-bottom: 10px; }
-        .history-list { list-style: none; padding: 0; margin: 0; }
-        .history-list li { font-size: 1.2rem; display: flex; justify-content: space-between; margin-bottom: 5px; color: #ddd; }
+        :root { color-scheme: light; font-family: system-ui, 'Malgun Gothic', sans-serif; }
+        * { box-sizing: border-box; }
+        body { background: #f3f6f9; color: #10202e; margin: 0; }
+        .top { position: sticky; top: 0; z-index: 2; background: #fff; border-bottom: 2px solid #c8d3dd; box-shadow: 0 2px 7px #10202e14; }
+        .top-inner, main { max-width: 900px; margin: auto; padding: 14px 16px; }
+        .top-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        h1 { font-size: clamp(1.25rem, 5vw, 1.8rem); margin: 0; }
+        #order-date { font: inherit; font-size: 1rem; padding: 10px; border: 2px solid #657b8e; border-radius: 8px; min-height: 44px; background: #fff; color: #10202e; }
+        .summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+        .status-banner { display: inline-block; font-size: 1rem; font-weight: 800; background: #d8e9ff; color: #0d4c89; padding: 8px 12px; border-radius: 8px; }
+        .closed { background: #ffe1dd; color: #9b2a1b; }
+        .grand-total { font-size: 1rem; font-weight: 700; white-space: nowrap; }
+        .grand-total strong { font-size: clamp(2rem, 8vw, 3rem); color: #ae3b00; line-height: 1; }
+        .updated { font-size: .88rem; color: #4d6475; margin: 7px 0 0; }
+        .section-title { font-size: 1.25rem; margin: 14px 0 10px; }
+        .total-list, .history-list { list-style: none; padding: 0; margin: 0; }
+        .total-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+        .total-item { background: #fff; border: 2px solid #d0dce5; border-left: 7px solid #1264a3; border-radius: 10px; min-height: 82px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .item-name { font-size: clamp(1.05rem, 3.4vw, 1.35rem); font-weight: 750; line-height: 1.3; overflow-wrap: anywhere; }
+        .total-count { font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 900; color: #ae3b00; white-space: nowrap; }
+        .history-container { margin-bottom: 30px; }
+        .history-slot { background: #fff; border: 1px solid #cdd8e2; border-radius: 9px; margin-bottom: 8px; }
+        .history-slot summary { cursor: pointer; min-height: 48px; padding: 12px; font-size: 1rem; font-weight: 750; }
+        .history-slot summary span { float: right; color: #0d4c89; }
+        .history-list { border-top: 1px solid #d6e0e8; padding: 10px 12px; }
+        .history-list li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 1rem; }
+        .history-list li span:last-child { white-space: nowrap; font-weight: 700; }
+        @media(max-width:650px) { .total-list { grid-template-columns: 1fr; } .top-line { align-items: stretch; flex-direction: column; } #order-date { width: 100%; } }
     </style>
 </head>
 <body>
-    <h1 id="today-date">오늘의 MF 발주</h1>
-    <label for="order-date">조회 날짜</label>
-    <input id="order-date" type="date" style="font-size:1.1rem;padding:8px;margin:8px 0 16px">
-    <div id="status-banner" class="status-banner">데이터 대기 중...</div>
-
-    <div class="section-title">🔥 최종 합계 (누적 총합)</div>
-    <ul id="total-list" class="total-list"></ul>
-
-    <div class="section-title">🕒 시간대별 입력 내역</div>
-    <div id="history-container" class="history-container"></div>
+    <header class="top"><div class="top-inner">
+        <div class="top-line"><h1 id="today-date">MF 발주 현황</h1><label for="order-date">조회 날짜 <input id="order-date" type="date"></label></div>
+        <div class="summary"><div id="status-banner" class="status-banner" role="status">데이터 대기 중...</div><div class="grand-total">누적 순건수 <strong id="grand-total">—</strong>건</div></div>
+        <p id="updated" class="updated"></p>
+    </div></header>
+    <main>
+        <h2 class="section-title">품목별 합계</h2>
+        <ul id="total-list" class="total-list"></ul>
+        <h2 class="section-title">시간대별 입력 내역</h2>
+        <div id="history-container" class="history-container"></div>
+    </main>
 
     <script>
         const firebaseConfig = {
@@ -81,9 +97,13 @@
             const totalListEl = document.getElementById('total-list');
             const historyContainerEl = document.getElementById('history-container');
             const statusBanner = document.getElementById('status-banner');
+            const grandTotalEl = document.getElementById('grand-total');
+            const updatedEl = document.getElementById('updated');
             
-            totalListEl.innerHTML = '';
-            historyContainerEl.innerHTML = '';
+            totalListEl.replaceChildren();
+            historyContainerEl.replaceChildren();
+            grandTotalEl.textContent = '0';
+            updatedEl.textContent = '';
 
             if (data && data.slots) {
                 statusBanner.innerText = data.lastStatus || "진행 중";
@@ -96,41 +116,39 @@
                 let totalItems = {}; 
                 let grandTotalCount = 0;
                 const slotKeys = Object.keys(data.slots).sort();
+                let latestUpdate = '';
                 
                 slotKeys.forEach(key => {
                     const slotData = data.slots[key];
                     const items = slotData.items || {};
+                    let slotTotal = 0;
+                    if (slotData.updatedAt > latestUpdate) latestUpdate = slotData.updatedAt;
                     
                     for (const [name, count] of Object.entries(items)) {
-                        const val = parseInt(count) || 0;
+                        const val = Number(count) || 0;
                         if (!totalItems[name]) totalItems[name] = 0;
                         totalItems[name] += val;
                         grandTotalCount += val;
+                        slotTotal += val;
                     }
 
-                    let historyHtml = `<div class="history-slot"><div class="history-title">${escapeHtml(slotData.label || key)}</div><ul class="history-list">`;
+                    let historyHtml = `<details class="history-slot"><summary>${escapeHtml(slotData.label || key)}<span>${slotTotal}건</span></summary><ul class="history-list">`;
                     for (const [name, count] of Object.entries(items)) {
                         historyHtml += `<li><span>${escapeHtml(name)}</span> <span>${Number(count) || 0}건</span></li>`;
                     }
-                    historyHtml += `</ul></div>`;
-                    historyContainerEl.innerHTML += historyHtml;
+                    historyHtml += `</ul></details>`;
+                    historyContainerEl.insertAdjacentHTML('beforeend', historyHtml);
                 });
 
-                // 품목별 누적 합계 표시
-                for (const [name, count] of Object.entries(totalItems).sort((a,b)=>a[0].localeCompare(b[0],'ko'))) {
-                    totalListEl.innerHTML += `
+                for (const [name, count] of Object.entries(totalItems).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0],'ko'))) {
+                    totalListEl.insertAdjacentHTML('beforeend', `
                         <li class="total-item">
-                            <span class="item-name">* ${escapeHtml(name)}</span> 
+                            <span class="item-name">${escapeHtml(name)}</span> 
                             <span class="total-count">${count}건</span>
-                        </li>`;
+                        </li>`);
                 }
-
-                // 총 건수 카드 추가
-                totalListEl.innerHTML += `
-                    <li class="total-item" style="background: #1e2a38; border-left-color: #FF9800;">
-                        <span class="item-name" style="color: #FFEB3B;">총건수</span> 
-                        <span class="total-count" style="color: #FFEB3B;">${grandTotalCount}건</span>
-                    </li>`;
+                grandTotalEl.textContent = String(grandTotalCount);
+                if (latestUpdate) updatedEl.textContent = '마지막 반영: ' + new Date(latestUpdate).toLocaleString('ko-KR', {timeZone:'Asia/Seoul'});
 
             } else {
                 statusBanner.innerText = "아직 등록된 발주가 없습니다.";
@@ -138,6 +156,7 @@
             }
           }, error => {
             document.getElementById('status-banner').innerText = '데이터를 읽지 못했습니다: ' + error.message;
+            document.getElementById('grand-total').textContent = '—';
           });
         }
         dateInput.addEventListener('change', showDate);
