@@ -13,6 +13,8 @@
         .top { position: sticky; top: 0; z-index: 2; background: #fff; border-bottom: 2px solid #c8d3dd; box-shadow: 0 2px 7px #10202e14; }
         .top-inner, main { max-width: 900px; margin: auto; padding: 14px 16px; }
         .top-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .controls { display:flex; align-items:end; gap:8px; }
+        .print-button { min-height:44px; padding:10px 16px; border:0; border-radius:8px; background:#123f6d; color:#fff; font:inherit; font-weight:800; cursor:pointer; white-space:nowrap; }
         h1 { font-size: clamp(1.25rem, 5vw, 1.8rem); margin: 0; }
         #order-date { font: inherit; font-size: 1rem; padding: 10px; border: 2px solid #657b8e; border-radius: 8px; min-height: 44px; background: #fff; color: #10202e; }
         .summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
@@ -22,32 +24,54 @@
         .grand-total strong { font-size: clamp(2rem, 8vw, 3rem); color: #ae3b00; line-height: 1; }
         .updated { font-size: .88rem; color: #4d6475; margin: 7px 0 0; }
         .section-title { font-size: 1.25rem; margin: 14px 0 10px; }
-        .total-list, .history-list { list-style: none; padding: 0; margin: 0; }
-        .total-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
-        .total-item { background: #fff; border: 2px solid #d0dce5; border-left: 7px solid #1264a3; border-radius: 10px; min-height: 82px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-        .item-name { font-size: clamp(1.05rem, 3.4vw, 1.35rem); font-weight: 750; line-height: 1.3; overflow-wrap: anywhere; }
-        .total-count { font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 900; color: #ae3b00; white-space: nowrap; }
-        .history-container { margin-bottom: 30px; }
-        .history-slot { background: #fff; border: 1px solid #cdd8e2; border-radius: 9px; margin-bottom: 8px; }
-        .history-slot summary { cursor: pointer; min-height: 48px; padding: 12px; font-size: 1rem; font-weight: 750; }
-        .history-slot summary span { float: right; color: #0d4c89; }
-        .history-list { border-top: 1px solid #d6e0e8; padding: 10px 12px; }
-        .history-list li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 1rem; }
-        .history-list li span:last-child { white-space: nowrap; font-weight: 700; }
-        @media(max-width:650px) { .total-list { grid-template-columns: 1fr; } .top-line { align-items: stretch; flex-direction: column; } #order-date { width: 100%; } }
+        .work-table-wrap { overflow-x:auto; background:#fff; border:2px solid #aebdca; border-radius:10px; }
+        .work-table { width:100%; min-width:720px; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+        .work-table th,.work-table td { border:1px solid #b8c5cf; padding:10px 8px; text-align:center; }
+        .work-table thead th { position:sticky; top:0; background:#173e63; color:#fff; font-size:1rem; }
+        .work-table .group { width:88px; background:#dceaf5; color:#123f6d; font-size:1.05rem; font-weight:900; }
+        .work-table .product { text-align:left; min-width:230px; font-size:1.05rem; font-weight:750; }
+        .work-table .slot { width:74px; font-size:1.12rem; font-weight:750; }
+        .work-table .total { width:86px; background:#fff2cf; color:#9d3500; font-size:1.45rem; font-weight:950; }
+        .work-table tr.group-start td,.work-table tr.group-start th { border-top:3px solid #6c8295; }
+        .zero { color:#a2adb5; font-weight:400; }
+        .cancel { color:#b3261e; }
+        .empty { padding:28px; text-align:center; color:#526272; background:#fff; border-radius:10px; }
+        .print-note { display:none; }
+        @media(max-width:650px) { .top-line { align-items: stretch; flex-direction: column; } .controls { align-items:stretch; } #order-date { flex:1; width:100%; } .print-button { flex:0 0 auto; } main { padding:10px 8px; } .work-table th,.work-table td { padding:9px 6px; } }
+        @media print {
+            @page { size:A4 portrait; margin:9mm; }
+            body { background:#fff; color:#000; }
+            .top { position:static; box-shadow:none; border:0; }
+            .top-inner,main { max-width:none; padding:0; }
+            .controls,.print-button { display:none !important; }
+            h1 { font-size:18pt; text-align:center; }
+            .summary { margin:5mm 0 2mm; }
+            .status-banner { border:1px solid #000; background:#fff; color:#000; padding:4px 8px; }
+            .grand-total strong { color:#000; font-size:24pt; }
+            .updated { text-align:right; color:#000; }
+            .section-title { margin:3mm 0 2mm; font-size:14pt; }
+            .work-table-wrap { overflow:visible; border:1px solid #000; border-radius:0; }
+            .work-table { min-width:0; }
+            .work-table th,.work-table td { border:1px solid #000; padding:5px 4px; }
+            .work-table thead th { position:static; background:#e5e5e5 !important; color:#000; font-size:10pt; }
+            .work-table .group { background:#eee !important; color:#000; font-size:10pt; }
+            .work-table .product { min-width:0; font-size:10pt; }
+            .work-table .slot { width:13%; font-size:11pt; }
+            .work-table .total { width:14%; background:#f3f3f3 !important; color:#000; font-size:13pt; }
+            .print-note { display:block; margin-top:3mm; font-size:9pt; }
+        }
     </style>
 </head>
 <body>
     <header class="top"><div class="top-inner">
-        <div class="top-line"><h1 id="today-date">MF 발주 현황</h1><label for="order-date">조회 날짜 <input id="order-date" type="date"></label></div>
+        <div class="top-line"><h1 id="today-date">MF 현장 작업지시서</h1><div class="controls"><label for="order-date">조회 날짜 <input id="order-date" type="date"></label><button class="print-button" type="button" onclick="window.print()">인쇄</button></div></div>
         <div class="summary"><div id="status-banner" class="status-banner" role="status">데이터 대기 중...</div><div class="grand-total">누적 순건수 <strong id="grand-total">—</strong>건</div></div>
         <p id="updated" class="updated"></p>
     </div></header>
     <main>
-        <h2 class="section-title">품목별 합계</h2>
-        <ul id="total-list" class="total-list"></ul>
-        <h2 class="section-title">시간대별 입력 내역</h2>
-        <div id="history-container" class="history-container"></div>
+        <h2 class="section-title">품목군별 작업수량</h2>
+        <div id="work-order"></div>
+        <p class="print-note">※ 각 시간대는 추가 발주수량이며, 누적은 당일 전체 작업수량입니다.</p>
     </main>
 
     <script>
@@ -81,6 +105,20 @@
         const dateInput = document.getElementById('order-date');
         dateInput.value = getTodayKST();
         let activeRef = null;
+        const slotOrder = ['1_slot_8','2_slot_10','3_slot_12','4_slot_13'];
+        const slotHeadings = {'1_slot_8':'8시 최초','2_slot_10':'10시 추가','3_slot_12':'12시 추가','4_slot_13':'13시 마감'};
+        const catalog = [
+          {group:'오징어', items:['손질오징어(통) 500g','손질오징어(통) 900g','손질오징어(할복) 500g','손질오징어(할복) 900g']},
+          {group:'새우', items:['활새우 800g','활새우 1.2kg']},
+          {group:'고등어', items:['손질 고등어 500g','손질 고등어 900g']},
+          {group:'뿔소라', items:['생물 뿔소라 600g','생물 뿔소라 1kg']},
+          {group:'홍합', items:['생물 홍합 1kg','생물 홍합 3kg']},
+          {group:'돌멍게', items:['생물 돌멍게 400g','생물 돌멍게 1kg']},
+          {group:'황돔', items:['손질 황돔 500g 1개','손질 황돔 900g 1개']},
+          {group:'백조기', items:['손질 백조기 500g 1개','손질 백조기 900g 1개']},
+          {group:'물바지락', items:['생물 물바지락 700g 1개','생물 물바지락 1kg 1개']},
+          {group:'대합', items:['생물 대합 600g 1개','생물 대합 1kg 1개']}
+        ];
         function escapeHtml(value) {
             return String(value).replace(/[&<>"']/g, char => ({
                 '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -90,18 +128,16 @@
           if (activeRef) activeRef.off();
           const selectedDate = dateInput.value;
           if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return;
-          document.getElementById('today-date').innerText = `${selectedDate} MF 발주`;
+          document.getElementById('today-date').innerText = `${selectedDate} MF 현장 작업지시서`;
           activeRef = db.ref('mf_orders/' + selectedDate);
           activeRef.on('value', (snapshot) => {
             const data = snapshot.val();
-            const totalListEl = document.getElementById('total-list');
-            const historyContainerEl = document.getElementById('history-container');
+            const workOrderEl = document.getElementById('work-order');
             const statusBanner = document.getElementById('status-banner');
             const grandTotalEl = document.getElementById('grand-total');
             const updatedEl = document.getElementById('updated');
             
-            totalListEl.replaceChildren();
-            historyContainerEl.replaceChildren();
+            workOrderEl.replaceChildren();
             grandTotalEl.textContent = '0';
             updatedEl.textContent = '';
 
@@ -113,39 +149,51 @@
                     statusBanner.classList.remove('closed');
                 }
 
-                let totalItems = {}; 
+                const byItem = {};
                 let grandTotalCount = 0;
-                const slotKeys = Object.keys(data.slots).sort();
                 let latestUpdate = '';
                 
-                slotKeys.forEach(key => {
+                slotOrder.forEach(key => {
                     const slotData = data.slots[key];
+                    if (!slotData) return;
                     const items = slotData.items || {};
-                    let slotTotal = 0;
                     if (slotData.updatedAt > latestUpdate) latestUpdate = slotData.updatedAt;
                     
                     for (const [name, count] of Object.entries(items)) {
                         const val = Number(count) || 0;
-                        if (!totalItems[name]) totalItems[name] = 0;
-                        totalItems[name] += val;
+                        if (!byItem[name]) byItem[name] = {};
+                        byItem[name][key] = val;
                         grandTotalCount += val;
-                        slotTotal += val;
                     }
-
-                    let historyHtml = `<details class="history-slot"><summary>${escapeHtml(slotData.label || key)}<span>${slotTotal}건</span></summary><ul class="history-list">`;
-                    for (const [name, count] of Object.entries(items)) {
-                        historyHtml += `<li><span>${escapeHtml(name)}</span> <span>${Number(count) || 0}건</span></li>`;
-                    }
-                    historyHtml += `</ul></details>`;
-                    historyContainerEl.insertAdjacentHTML('beforeend', historyHtml);
                 });
 
-                for (const [name, count] of Object.entries(totalItems).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0],'ko'))) {
-                    totalListEl.insertAdjacentHTML('beforeend', `
-                        <li class="total-item">
-                            <span class="item-name">${escapeHtml(name)}</span> 
-                            <span class="total-count">${count}건</span>
-                        </li>`);
+                const known = new Set(catalog.flatMap(group => group.items));
+                const groups = catalog.map(group => ({
+                    group:group.group,
+                    items:group.items.filter(name => Object.prototype.hasOwnProperty.call(byItem,name))
+                })).filter(group => group.items.length);
+                const unknown = Object.keys(byItem).filter(name => !known.has(name)).sort((a,b)=>a.localeCompare(b,'ko'));
+                if (unknown.length) groups.push({group:'기타',items:unknown});
+
+                if (!groups.length) {
+                    workOrderEl.innerHTML = '<div class="empty">표시할 품목이 없습니다.</div>';
+                } else {
+                    let html = '<div class="work-table-wrap"><table class="work-table"><thead><tr><th>품목군</th><th>상품명</th>';
+                    html += slotOrder.map(key => `<th>${slotHeadings[key]}</th>`).join('');
+                    html += '<th>누적</th></tr></thead><tbody>';
+                    groups.forEach(group => {
+                        group.items.forEach((name,index) => {
+                            const values = slotOrder.map(key => Number(byItem[name]?.[key]) || 0);
+                            const total = values.reduce((sum,value)=>sum+value,0);
+                            html += `<tr class="${index===0?'group-start':''}">`;
+                            if(index===0) html += `<th class="group" rowspan="${group.items.length}">${escapeHtml(group.group)}</th>`;
+                            html += `<td class="product">${escapeHtml(name)}</td>`;
+                            html += values.map(value => `<td class="slot ${value===0?'zero':value<0?'cancel':''}">${value===0?'—':value}</td>`).join('');
+                            html += `<td class="total ${total<0?'cancel':''}">${total}</td></tr>`;
+                        });
+                    });
+                    html += '</tbody></table></div>';
+                    workOrderEl.innerHTML = html;
                 }
                 grandTotalEl.textContent = String(grandTotalCount);
                 if (latestUpdate) updatedEl.textContent = '마지막 반영: ' + new Date(latestUpdate).toLocaleString('ko-KR', {timeZone:'Asia/Seoul'});
