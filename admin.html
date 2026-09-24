@@ -30,14 +30,14 @@
   <h1>MF 발주 바로 입력</h1>
 
   <section>
-    <h2>1. 날짜와 시간대</h2>
+    <h2>1. 날짜와 입력 차수</h2>
     <div class="row">
       <div><label for="date">발주 날짜</label><input id="date" type="date"></div>
-      <div><label for="slot">입력 시간대</label><select id="slot">
-        <option value="1_slot_8">8시 최초입력</option>
-        <option value="2_slot_10">10시 추가</option>
-        <option value="3_slot_12">12시 추가</option>
-        <option value="4_slot_13">13시 최종마감</option>
+      <div><label for="slot">입력 차수</label><select id="slot">
+        <option value="1_slot_8">8시 입력</option>
+        <option value="2_slot_10">1차 추가</option>
+        <option value="3_slot_12">2차 추가</option>
+        <option value="4_slot_13">마감</option>
       </select></div>
     </div>
     <p id="existing" class="hint">기존 입력을 확인하는 중…</p>
@@ -66,7 +66,7 @@ const firebaseConfig={
 firebase.initializeApp(firebaseConfig);
 const db=firebase.database();
 const $=id=>document.getElementById(id);
-const labels={"1_slot_8":"8시 최초입력","2_slot_10":"10시 추가","3_slot_12":"12시 추가","4_slot_13":"13시 최종마감"};
+const labels={"1_slot_8":"8시 입력","2_slot_10":"1차 추가","3_slot_12":"2차 추가","4_slot_13":"마감"};
 const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 $("date").value=today;
 let existing=null,busy=false;
@@ -84,7 +84,7 @@ async function loadExisting(){
       const total=entries.reduce((s,[,v])=>s+(Number(v)||0),0);
       $("existing").textContent=`현재 저장: ${entries.length}품목 / ${total}건`;
     }else{
-      $("existing").textContent="이 시간대에 저장된 입력이 없습니다.";
+      $("existing").textContent="이 차수에 저장된 입력이 없습니다.";
     }
   }catch(e){
     $("existing").textContent="기존 입력 조회 실패: "+e.message;
@@ -162,3 +162,4 @@ updateSummary();
 </script>
 </body>
 </html>
+

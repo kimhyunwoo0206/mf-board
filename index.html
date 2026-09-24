@@ -99,7 +99,7 @@
     <main>
         <h2 class="section-title">품목군별 작업수량</h2>
         <div id="work-order"></div>
-        <p class="print-note">※ 각 시간대는 추가 발주수량이며, 누적은 당일 전체 작업수량입니다.</p>
+        <p class="print-note">※ 1차·2차·마감은 추가 발주수량이며, 누적은 당일 전체 작업수량입니다.</p>
     </main>
 
     <script>
@@ -134,8 +134,9 @@
         dateInput.value = getTodayKST();
         let activeRef = null;
         const slotOrder = ['1_slot_8','2_slot_10','3_slot_12','4_slot_13'];
-        const slotHeadings = {'1_slot_8':'8시 최초','2_slot_10':'10시 추가','3_slot_12':'12시 추가','4_slot_13':'13시 마감'};
-        const slotShortHeadings = {'1_slot_8':'8시','2_slot_10':'10시','3_slot_12':'12시','4_slot_13':'13시'};
+        const slotHeadings = {'1_slot_8':'8시','2_slot_10':'1차','3_slot_12':'2차','4_slot_13':'마감'};
+        const slotShortHeadings = slotHeadings;
+        const slotStatusLabels = {'1_slot_8':'8시 입력','2_slot_10':'1차 추가','3_slot_12':'2차 추가','4_slot_13':'마감'};
         const catalog = [
           {group:'오징어', items:['손질오징어(통) 500g','손질오징어(통) 900g','손질오징어(할복) 500g','손질오징어(할복) 900g']},
           {group:'백조기', items:['손질 백조기 500g 1개','손질 백조기 900g 1개']},
@@ -171,8 +172,9 @@
             updatedEl.textContent = '';
 
             if (data && data.slots) {
-                statusBanner.innerText = data.lastStatus || "진행 중";
-                if (data.lastStatus && data.lastStatus.includes('마감')) {
+                const latestSlot = [...slotOrder].reverse().find(key => data.slots[key]);
+                statusBanner.innerText = slotStatusLabels[latestSlot] || "진행 중";
+                if (latestSlot === '4_slot_13') {
                     statusBanner.classList.add('closed');
                 } else {
                     statusBanner.classList.remove('closed');
