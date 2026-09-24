@@ -37,7 +37,35 @@
         .cancel { color:#b3261e; }
         .empty { padding:28px; text-align:center; color:#526272; background:#fff; border-radius:10px; }
         .print-note { display:none; }
-        @media(max-width:650px) { .top-line { align-items: stretch; flex-direction: column; } .controls { align-items:stretch; } #order-date { flex:1; width:100%; } .print-button { flex:0 0 auto; } main { padding:10px 8px; } .work-table th,.work-table td { padding:9px 6px; } }
+        .mobile-label { display:none; }
+        @media(max-width:650px) {
+            .top-inner { padding:10px 8px; }
+            .top-line { align-items:stretch; flex-direction:column; gap:7px; }
+            .controls { align-items:stretch; }
+            #order-date { flex:1; width:100%; padding:7px; min-height:40px; }
+            .print-button { flex:0 0 auto; min-height:40px; padding:7px 12px; }
+            .summary { margin-top:8px; }
+            .status-banner { padding:6px 8px; font-size:.84rem; }
+            .grand-total { font-size:.82rem; }
+            .grand-total strong { font-size:1.8rem; }
+            .updated { font-size:.72rem; margin-top:4px; }
+            main { padding:6px 3px; }
+            .section-title { margin:8px 3px 6px; font-size:1rem; }
+            .work-table-wrap { overflow-x:hidden; border-width:1px; border-radius:6px; }
+            .work-table { width:100%; min-width:0; table-layout:fixed; }
+            .work-table th,.work-table td { padding:6px 2px; line-height:1.15; overflow-wrap:anywhere; }
+            .work-table thead th { font-size:.68rem; }
+            .work-table thead th:nth-child(1) { width:12%; }
+            .work-table thead th:nth-child(2) { width:31%; }
+            .work-table thead th:nth-child(n+3):nth-child(-n+6) { width:9%; }
+            .work-table thead th:nth-child(7) { width:12%; }
+            .work-table .group { width:auto; font-size:.75rem; }
+            .work-table .product { min-width:0; font-size:.76rem; letter-spacing:-.03em; }
+            .work-table .slot { width:auto; font-size:.88rem; }
+            .work-table .total { width:auto; font-size:1rem; }
+            .desktop-label { display:none; }
+            .mobile-label { display:inline; }
+        }
         @media print {
             @page { size:A4 portrait; margin:9mm; }
             body { background:#fff; color:#000; }
@@ -107,6 +135,7 @@
         let activeRef = null;
         const slotOrder = ['1_slot_8','2_slot_10','3_slot_12','4_slot_13'];
         const slotHeadings = {'1_slot_8':'8시 최초','2_slot_10':'10시 추가','3_slot_12':'12시 추가','4_slot_13':'13시 마감'};
+        const slotShortHeadings = {'1_slot_8':'8시','2_slot_10':'10시','3_slot_12':'12시','4_slot_13':'13시'};
         const catalog = [
           {group:'오징어', items:['손질오징어(통) 500g','손질오징어(통) 900g','손질오징어(할복) 500g','손질오징어(할복) 900g']},
           {group:'백조기', items:['손질 백조기 500g 1개','손질 백조기 900g 1개']},
@@ -178,8 +207,8 @@
                 if (!groups.length) {
                     workOrderEl.innerHTML = '<div class="empty">표시할 품목이 없습니다.</div>';
                 } else {
-                    let html = '<div class="work-table-wrap"><table class="work-table"><thead><tr><th>품목군</th><th>상품명</th>';
-                    html += slotOrder.map(key => `<th>${slotHeadings[key]}</th>`).join('');
+                    let html = '<div class="work-table-wrap"><table class="work-table"><thead><tr><th><span class="desktop-label">품목군</span><span class="mobile-label">군</span></th><th><span class="desktop-label">상품명</span><span class="mobile-label">품목</span></th>';
+                    html += slotOrder.map(key => `<th><span class="desktop-label">${slotHeadings[key]}</span><span class="mobile-label">${slotShortHeadings[key]}</span></th>`).join('');
                     html += '<th>누적</th></tr></thead><tbody>';
                     groups.forEach(group => {
                         group.items.forEach((name,index) => {
