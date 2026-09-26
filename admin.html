@@ -7,7 +7,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <style>
-    body{font-family:system-ui,sans-serif;background:#f4f6f8;color:#17212b;margin:0}
+    body{font-family:system-ui,'Malgun Gothic',sans-serif;background:#f4f6f8;color:#17212b;margin:0}
     main{max-width:850px;margin:auto;padding:16px}
     section{background:#fff;border:1px solid #d5dce3;border-radius:12px;padding:18px;margin:14px 0}
     h1{font-size:1.5rem}h2{font-size:1.1rem;margin-top:0}
@@ -19,36 +19,46 @@
     button:disabled{background:#87939d;cursor:not-allowed}
     .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .hint{font-size:.9rem;color:#526272;line-height:1.45}
-    .status{margin-top:12px;font-weight:800}
-    .error{color:#a52222}.ok{color:#166534}
+    .status{margin-top:12px;font-weight:800;white-space:pre-wrap}
+    .error{color:#a52222}.ok{color:#166534}.warn{color:#9a6700}
     .summary{margin-top:10px;padding:10px 12px;background:#f1f3f5;border-radius:8px;font-size:.95rem;white-space:pre-wrap}
+    .auto-banner{display:none;background:#e7f1ff;border:2px solid #3b82f6;color:#123f6d;border-radius:10px;padding:12px 14px;font-weight:800;margin-bottom:12px}
+    .auto-banner.show{display:block}
+    .secondary{background:#5b6570;margin-top:8px}
     @media(max-width:540px){.row{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
 <main>
-  <h1>MF 발주 바로 입력</h1>
+  <h1>MF 발주 입력</h1>
+  <div id="auto-banner" class="auto-banner"></div>
 
   <section>
-    <h2>1. 날짜와 입력 차수</h2>
+    <h2>1. 날짜와 차수</h2>
     <div class="row">
       <div><label for="date">발주 날짜</label><input id="date" type="date"></div>
       <div><label for="slot">입력 차수</label><select id="slot">
-        <option value="1_slot_8">8시 입력</option>
-        <option value="2_slot_10">1차 추가</option>
-        <option value="3_slot_12">2차 추가</option>
-        <option value="4_slot_13">마감</option>
+        <option value="1_slot_8">1차 (8시)</option>
+        <option value="2_slot_10">2차 (10시)</option>
+        <option value="3_slot_12">3차 (12시)</option>
+        <option value="4_slot_13">4차 (13시 마감)</option>
       </select></div>
     </div>
+    <label for="mode">저장 방식</label>
+    <select id="mode">
+      <option value="replace">이 차수 내용으로 저장(기존 차수 교체)</option>
+      <option value="merge">기존 차수에 추가/취소 반영</option>
+    </select>
     <p id="existing" class="hint">기존 입력을 확인하는 중…</p>
   </section>
 
   <section>
-    <h2>2. ChatGPT 결과 붙여넣기</h2>
-    <p class="hint">한 줄에 <b>품목명 : 건수건</b> 형식으로 붙여넣으세요. 취소는 <b>품목명 : 취소 1건</b> 형식입니다. 같은 품목이 여러 줄이면 자동 합산합니다.</p>
+    <h2>2. ChatGPT 결과</h2>
+    <p class="hint">한 줄에 <b>품목명 : 건수</b> 형식입니다. 취소는 <b>품목명 : 취소 1건</b> 형식입니다. 같은 품목이 여러 줄이면 자동 합산합니다.</p>
     <textarea id="raw" placeholder="손질오징어(통) 500g : 6건&#10;생물 물바지락 700g 1개 : 7건&#10;생물 대합 600g 1개 : 취소 1건"></textarea>
     <div id="summary" class="summary">입력 대기</div>
-    <button id="save" type="button">바로 저장</button>
+    <button id="save" type="button">저장</button>
+    <button id="view" class="secondary" type="button">현장 화면 보기</button>
     <p id="save-status" class="status" role="status"></p>
   </section>
 </main>
@@ -66,12 +76,79 @@ const firebaseConfig={
 firebase.initializeApp(firebaseConfig);
 const db=firebase.database();
 const $=id=>document.getElementById(id);
-const labels={"1_slot_8":"8시 입력","2_slot_10":"1차 추가","3_slot_12":"2차 추가","4_slot_13":"마감"};
+const labels={
+  "1_slot_8":"1차 (8시)",
+  "2_slot_10":"2차 (10시)",
+  "3_slot_12":"3차 (12시)",
+  "4_slot_13":"4차 (13시 마감)"
+};
+const slotAliases={"1":"1_slot_8","2":"2_slot_10","3":"3_slot_12","4":"4_slot_13"};
 const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-$("date").value=today;
-let existing=null,busy=false;
+let existing=null,busy=false,autoStarted=false,alreadyApplied=false;
+const params=new URLSearchParams(location.search);
+
 function validDate(v){return /^\d{4}-\d{2}-\d{2}$/.test(v)}
+function normalizeDate(v){
+  if(validDate(v)) return v;
+  if(/^\d{6}$/.test(v)) return `20${v.slice(0,2)}-${v.slice(2,4)}-${v.slice(4,6)}`;
+  if(/^\d{8}$/.test(v)) return `${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6,8)}`;
+  return "";
+}
 function slotPath(){return "mf_orders/"+$("date").value+"/slots/"+$("slot").value}
+function encodeItemKey(name){
+  const bytes=new TextEncoder().encode(name);
+  let binary="";
+  bytes.forEach(b=>binary+=String.fromCharCode(b));
+  return "k_"+btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+}
+function decodeItemKey(key){
+  if(!String(key).startsWith("k_")) return key;
+  try{
+    let b64=String(key).slice(2).replace(/-/g,"+").replace(/_/g,"/");
+    while(b64.length%4) b64+="=";
+    const binary=atob(b64);
+    return new TextDecoder().decode(Uint8Array.from(binary,c=>c.charCodeAt(0)));
+  }catch(e){return key}
+}
+function decodeStoredItems(stored){
+  const out={};
+  for(const [key,value] of Object.entries(stored||{})){
+    const name=decodeItemKey(key);
+    out[name]=(out[name]||0)+(Number(value)||0);
+  }
+  return out;
+}
+function encodeItems(rawItems){
+  const out={};
+  for(const [name,qty] of Object.entries(rawItems||{})) out[encodeItemKey(name)]=qty;
+  return out;
+}
+function parseInput(){
+  const rawLines=$("raw").value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const items={};
+  const errors=[];
+  rawLines.forEach((source,i)=>{
+    const match=source.match(/^\s*[-•*]?\s*(.+?)\s*[:：]\s*(취소\s*|[-−]\s*)?(\d+)\s*건?\s*$/);
+    if(!match){errors.push(`${i+1}행 형식 확인 필요: ${source}`);return}
+    const name=match[1].trim();
+    const qty=Number(match[3])*(match[2]?-1:1);
+    if(!name||!Number.isSafeInteger(qty)||qty===0){errors.push(`${i+1}행 값 확인 필요: ${source}`);return}
+    items[name]=(items[name]||0)+qty;
+  });
+  for(const [name,qty] of Object.entries(items)) if(qty===0) delete items[name];
+  if(!rawLines.length) errors.push("입력 내용이 없습니다.");
+  if(!Object.keys(items).length&&!errors.length) errors.push("저장할 품목이 없습니다.");
+  return {items,errors};
+}
+function updateSummary(){
+  const {items,errors}=parseInput();
+  if(errors.length){$("summary").textContent=errors.join("\n");$("summary").className="summary error";return}
+  const entries=Object.entries(items);
+  const total=entries.reduce((s,[,v])=>s+v,0);
+  const detail=entries.map(([name,qty])=>`${name} : ${qty<0?`취소 ${Math.abs(qty)}건`:`${qty}건`}`).join("\n");
+  $("summary").textContent=`저장 예정: ${entries.length}품목 / 순 ${total}건\n\n${detail}`;
+  $("summary").className="summary";
+}
 async function loadExisting(){
   existing=null;
   $("existing").textContent="기존 입력을 확인하는 중…";
@@ -80,86 +157,102 @@ async function loadExisting(){
     const snap=await db.ref(slotPath()).once("value");
     existing=snap.val();
     if(existing?.items){
-      const entries=Object.entries(existing.items);
+      const raw=decodeStoredItems(existing.items);
+      const entries=Object.entries(raw);
       const total=entries.reduce((s,[,v])=>s+(Number(v)||0),0);
-      $("existing").textContent=`현재 저장: ${entries.length}품목 / ${total}건`;
-    }else{
-      $("existing").textContent="이 차수에 저장된 입력이 없습니다.";
-    }
-  }catch(e){
-    $("existing").textContent="기존 입력 조회 실패: "+e.message;
-  }
+      $("existing").textContent=`현재 저장: ${entries.length}품목 / 순 ${total}건`;
+    }else $("existing").textContent="이 차수에 저장된 입력이 없습니다.";
+  }catch(e){$("existing").textContent="기존 입력 조회 실패: "+e.message}
 }
-function parseInput(){
-  const rawLines=$("raw").value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  const items={};
-  const errors=[];
-  rawLines.forEach((source,i)=>{
-    const match=source.match(/^\s*[-•*]?\s*(.+?)\s*[:：]\s*(취소\s*|[-−]\s*)?(\d+)\s*건?\s*$/);
-    if(!match){ errors.push(`${i+1}행 형식 확인 필요: ${source}`); return; }
-    const name=match[1].trim();
-    const qty=Number(match[3])*(match[2]?-1:1);
-    if(!name || !Number.isSafeInteger(qty) || qty===0){ errors.push(`${i+1}행 값 확인 필요: ${source}`); return; }
-    items[name]=(items[name]||0)+qty;
-  });
-  for(const [name,qty] of Object.entries(items)){
-    if(qty===0) delete items[name];
+function mergeRawItems(base,delta){
+  const out={...base};
+  for(const [name,qty] of Object.entries(delta)){
+    out[name]=(out[name]||0)+qty;
+    if(out[name]===0) delete out[name];
   }
-  if(!rawLines.length) errors.push("입력 내용이 없습니다.");
-  if(!Object.keys(items).length && !errors.length) errors.push("저장할 품목이 없습니다.");
-  return {items,errors};
+  return out;
 }
-function updateSummary(){
-  const {items,errors}=parseInput();
-  if(errors.length){
-    $("summary").textContent=errors.join("\n");
-    $("summary").className="summary error";
-    return;
-  }
-  const entries=Object.entries(items);
-  const total=entries.reduce((s,[,v])=>s+v,0);
-  $("summary").textContent=`저장 예정: ${entries.length}품목 / ${total}건`;
-  $("summary").className="summary";
-}
-$("raw").addEventListener("input",updateSummary);
-$("date").addEventListener("change",loadExisting);
-$("slot").addEventListener("change",loadExisting);
-$("save").addEventListener("click",async()=>{
-  if(busy)return;
+async function saveData(isAuto=false){
+  if(busy)return false;
   $("save-status").textContent="";
-  const date=$("date").value,slot=$("slot").value;
-  if(!validDate(date)){ $("save-status").textContent="발주 날짜를 확인하세요."; $("save-status").className="status error"; return; }
+  const date=$("date").value,slot=$("slot").value,mode=$("mode").value;
+  if(!validDate(date)){ $("save-status").textContent="발주 날짜를 확인하세요.";$("save-status").className="status error";return false; }
   const {items,errors}=parseInput();
-  if(errors.length){ $("save-status").textContent=errors.join(" / "); $("save-status").className="status error"; return; }
-  busy=true;$("save").disabled=true;$("save").textContent="저장 중…";
+  if(errors.length){ $("save-status").textContent=errors.join(" / ");$("save-status").className="status error";return false; }
+  const requestId=(params.get("rid")||"").replace(/[^A-Za-z0-9_-]/g,"").slice(0,80);
+  busy=true;alreadyApplied=false;$("save").disabled=true;$("save").textContent="저장 중…";
   try{
     const dayRef=db.ref("mf_orders/"+date);
     const savedAt=new Date().toISOString();
     await dayRef.transaction(day=>{
       day=day||{};
       day.slots=day.slots||{};
-      day.slots[slot]={label:labels[slot],items,updatedAt:savedAt};
-      const latestSlot=Object.keys(day.slots).sort().at(-1);
+      day.appliedRequests=day.appliedRequests||{};
+      if(requestId&&day.appliedRequests[requestId]){alreadyApplied=true;return day}
+      let rawToSave=items;
+      if(mode==="merge"){
+        const previous=decodeStoredItems(day.slots[slot]?.items||{});
+        rawToSave=mergeRawItems(previous,items);
+      }
+      day.slots[slot]={label:labels[slot],items:encodeItems(rawToSave),updatedAt:savedAt};
+      if(requestId) day.appliedRequests[requestId]=savedAt;
+      const latestSlot=Object.keys(day.slots).filter(k=>labels[k]).sort().at(-1);
       day.lastStatus=labels[latestSlot]||labels[slot];
       return day;
     });
-    const count=Object.keys(items).length;
-    const total=Object.values(items).reduce((s,v)=>s+v,0);
-    $("save-status").textContent=`저장 완료: ${count}품목 / ${total}건`;
-    $("save-status").className="status ok";
-    $("raw").value="";
-    updateSummary();
+    if(alreadyApplied){
+      $("save-status").textContent="이미 반영된 요청입니다. 중복 저장하지 않았습니다.";
+      $("save-status").className="status warn";
+    }else{
+      const count=Object.keys(items).length;
+      const total=Object.values(items).reduce((s,v)=>s+v,0);
+      $("save-status").textContent=`저장 완료: ${count}품목 / 순 ${total}건`;
+      $("save-status").className="status ok";
+    }
     await loadExisting();
+    if(isAuto){
+      $("auto-banner").textContent=alreadyApplied?"이미 반영된 요청입니다. 현장 화면으로 이동합니다.":"자동 등록 완료. 현장 화면으로 이동합니다.";
+      setTimeout(()=>location.replace(`index.html?date=${encodeURIComponent(date)}`),900);
+    }
+    return true;
   }catch(e){
     $("save-status").textContent="저장 실패: "+e.message;
     $("save-status").className="status error";
+    if(isAuto) $("auto-banner").textContent="자동 등록에 실패했습니다. 아래 내용을 확인한 뒤 저장을 다시 눌러주세요.";
+    return false;
   }finally{
-    busy=false;$("save").disabled=false;$("save").textContent="바로 저장";
+    busy=false;$("save").disabled=false;$("save").textContent="저장";
   }
-});
-loadExisting();
-updateSummary();
+}
+function applyQuery(){
+  const queryDate=normalizeDate(params.get("date")||"");
+  $("date").value=queryDate||today;
+  const rawSlot=params.get("slot")||"";
+  const resolvedSlot=slotAliases[rawSlot]||rawSlot;
+  if(labels[resolvedSlot]) $("slot").value=resolvedSlot;
+  const mode=params.get("mode");
+  if(mode==="merge"||mode==="replace") $("mode").value=mode;
+  const text=params.get("text");
+  if(text) $("raw").value=text;
+  const auto=params.get("commit")==="1";
+  if(text){
+    $("auto-banner").classList.add("show");
+    $("auto-banner").textContent=auto?"ChatGPT 확인 결과를 자동 등록합니다…":"ChatGPT 확인 결과가 자동 입력되었습니다. 수정 후 저장할 수 있습니다.";
+  }
+  return auto&&!!text;
+}
+$("raw").addEventListener("input",updateSummary);
+$("date").addEventListener("change",loadExisting);
+$("slot").addEventListener("change",loadExisting);
+$("save").addEventListener("click",()=>saveData(false));
+$("view").addEventListener("click",()=>location.href=`index.html?date=${encodeURIComponent($("date").value)}`);
+
+(async()=>{
+  const shouldAuto=applyQuery();
+  updateSummary();
+  await loadExisting();
+  if(shouldAuto&&!autoStarted){autoStarted=true;await saveData(true)}
+})();
 </script>
 </body>
 </html>
-
