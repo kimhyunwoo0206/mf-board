@@ -1,246 +1,73 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MF 발주 현황</title>
-    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
-    <style>
-        :root { color-scheme: light; font-family: system-ui, 'Malgun Gothic', sans-serif; }
-        * { box-sizing: border-box; }
-        body { background: #f3f6f9; color: #10202e; margin: 0; }
-        .top { position: sticky; top: 0; z-index: 2; background: #fff; border-bottom: 2px solid #c8d3dd; box-shadow: 0 2px 7px #10202e14; }
-        .top-inner, main { max-width: 900px; margin: auto; padding: 14px 16px; }
-        .top-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-        .controls { display:flex; align-items:end; gap:8px; }
-        .print-button { min-height:44px; padding:10px 16px; border:0; border-radius:8px; background:#123f6d; color:#fff; font:inherit; font-weight:800; cursor:pointer; white-space:nowrap; }
-        h1 { font-size: clamp(1.25rem, 5vw, 1.8rem); margin: 0; }
-        #order-date { font: inherit; font-size: 1rem; padding: 10px; border: 2px solid #657b8e; border-radius: 8px; min-height: 44px; background: #fff; color: #10202e; }
-        .summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
-        .status-banner { display: inline-block; font-size: 1rem; font-weight: 800; background: #d8e9ff; color: #0d4c89; padding: 8px 12px; border-radius: 8px; }
-        .closed { background: #ffe1dd; color: #9b2a1b; }
-        .grand-total { font-size: 1rem; font-weight: 700; white-space: nowrap; }
-        .grand-total strong { font-size: clamp(2rem, 8vw, 3rem); color: #ae3b00; line-height: 1; }
-        .updated { font-size: .88rem; color: #4d6475; margin: 7px 0 0; }
-        .section-title { font-size: 1.25rem; margin: 14px 0 10px; }
-        .work-table-wrap { overflow-x:auto; background:#fff; border:2px solid #aebdca; border-radius:10px; }
-        .work-table { width:100%; min-width:720px; border-collapse:collapse; font-variant-numeric:tabular-nums; }
-        .work-table th,.work-table td { border:1px solid #b8c5cf; padding:10px 8px; text-align:center; }
-        .work-table thead th { position:sticky; top:0; background:#173e63; color:#fff; font-size:1rem; }
-        .work-table .group { width:88px; background:#dceaf5; color:#123f6d; font-size:1.05rem; font-weight:900; }
-        .work-table .product { text-align:left; min-width:230px; font-size:1.05rem; font-weight:750; }
-        .work-table .slot { width:74px; font-size:1.12rem; font-weight:750; }
-        .work-table .total { width:86px; background:#fff2cf; color:#9d3500; font-size:1.45rem; font-weight:950; }
-        .work-table tr.group-start td,.work-table tr.group-start th { border-top:3px solid #6c8295; }
-        .zero { color:#a2adb5; font-weight:400; }
-        .cancel { color:#b3261e; }
-        .empty { padding:28px; text-align:center; color:#526272; background:#fff; border-radius:10px; }
-        .print-note { display:none; }
-        .mobile-label { display:none; }
-        @media(max-width:650px) {
-            .top-inner { padding:10px 8px; }
-            .top-line { align-items:stretch; flex-direction:column; gap:7px; }
-            .controls { align-items:stretch; }
-            #order-date { flex:1; width:100%; padding:7px; min-height:40px; }
-            .print-button { flex:0 0 auto; min-height:40px; padding:7px 12px; }
-            .summary { margin-top:8px; }
-            .status-banner { padding:6px 8px; font-size:.84rem; }
-            .grand-total { font-size:.82rem; }
-            .grand-total strong { font-size:1.8rem; }
-            .updated { font-size:.72rem; margin-top:4px; }
-            main { padding:6px 3px; }
-            .section-title { margin:8px 3px 6px; font-size:1rem; }
-            .work-table-wrap { overflow-x:hidden; border-width:1px; border-radius:6px; }
-            .work-table { width:100%; min-width:0; table-layout:fixed; }
-            .work-table th,.work-table td { padding:6px 2px; line-height:1.15; overflow-wrap:anywhere; }
-            .work-table thead th { font-size:.68rem; }
-            .work-table thead th:nth-child(1) { width:12%; }
-            .work-table thead th:nth-child(2) { width:31%; }
-            .work-table thead th:nth-child(n+3):nth-child(-n+6) { width:9%; }
-            .work-table thead th:nth-child(7) { width:12%; }
-            .work-table .group { width:auto; font-size:.75rem; }
-            .work-table .product { min-width:0; font-size:.76rem; letter-spacing:-.03em; }
-            .work-table .slot { width:auto; font-size:.88rem; }
-            .work-table .total { width:auto; font-size:1rem; }
-            .desktop-label { display:none; }
-            .mobile-label { display:inline; }
-        }
-        @media print {
-            @page { size:A4 portrait; margin:9mm; }
-            body { background:#fff; color:#000; }
-            .top { position:static; box-shadow:none; border:0; }
-            .top-inner,main { max-width:none; padding:0; }
-            .controls,.print-button { display:none !important; }
-            h1 { font-size:18pt; text-align:center; }
-            .summary { margin:5mm 0 2mm; }
-            .status-banner { border:1px solid #000; background:#fff; color:#000; padding:4px 8px; }
-            .grand-total strong { color:#000; font-size:24pt; }
-            .updated { text-align:right; color:#000; }
-            .section-title { margin:3mm 0 2mm; font-size:14pt; }
-            .work-table-wrap { overflow:visible; border:1px solid #000; border-radius:0; }
-            .work-table { min-width:0; }
-            .work-table th,.work-table td { border:1px solid #000; padding:5px 4px; }
-            .work-table thead th { position:static; background:#e5e5e5 !important; color:#000; font-size:10pt; }
-            .work-table .group { background:#eee !important; color:#000; font-size:10pt; }
-            .work-table .product { min-width:0; font-size:10pt; }
-            .work-table .slot { width:13%; font-size:11pt; }
-            .work-table .total { width:14%; background:#f3f3f3 !important; color:#000; font-size:13pt; }
-            .print-note { display:block; margin-top:3mm; font-size:9pt; }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MF 발주 현황</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+<style>
+:root{color-scheme:light;font-family:system-ui,'Malgun Gothic',sans-serif}
+*{box-sizing:border-box}body{background:#f3f6f9;color:#10202e;margin:0}
+.top{position:sticky;top:0;z-index:2;background:#fff;border-bottom:2px solid #c8d3dd;box-shadow:0 2px 7px #10202e14}
+.top-inner,main{max-width:900px;margin:auto;padding:14px 16px}.top-line{display:flex;justify-content:space-between;align-items:center;gap:12px}.controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+.print-button,.admin-button{min-height:44px;padding:10px 16px;border:0;border-radius:8px;background:#123f6d;color:#fff;font:inherit;font-weight:800;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center}.admin-button{background:#5b6570}
+h1{font-size:clamp(1.25rem,5vw,1.8rem);margin:0}#order-date{font:inherit;font-size:1rem;padding:10px;border:2px solid #657b8e;border-radius:8px;min-height:44px;background:#fff;color:#10202e}
+.summary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}.status-banner{display:inline-block;font-size:1rem;font-weight:800;background:#d8e9ff;color:#0d4c89;padding:8px 12px;border-radius:8px}.closed{background:#ffe1dd;color:#9b2a1b}.grand-total{font-size:1rem;font-weight:700;white-space:nowrap}.grand-total strong{font-size:clamp(2rem,8vw,3rem);color:#ae3b00;line-height:1}.updated{font-size:.88rem;color:#4d6475;margin:7px 0 0}.section-title{font-size:1.25rem;margin:14px 0 10px}
+.work-table-wrap{overflow-x:auto;background:#fff;border:2px solid #aebdca;border-radius:10px}.work-table{width:100%;min-width:720px;border-collapse:collapse;font-variant-numeric:tabular-nums}.work-table th,.work-table td{border:1px solid #b8c5cf;padding:10px 8px;text-align:center}.work-table thead th{position:sticky;top:0;background:#173e63;color:#fff;font-size:1rem}.work-table .group{width:88px;background:#dceaf5;color:#123f6d;font-size:1.05rem;font-weight:900}.work-table .product{text-align:left;min-width:230px;font-size:1.05rem;font-weight:750}.work-table .slot{width:74px;font-size:1.12rem;font-weight:750}.work-table .total{width:86px;background:#fff2cf;color:#9d3500;font-size:1.45rem;font-weight:950}.work-table tr.group-start td,.work-table tr.group-start th{border-top:3px solid #6c8295}.zero{color:#a2adb5;font-weight:400}.cancel{color:#b3261e}.empty{padding:28px;text-align:center;color:#526272;background:#fff;border-radius:10px}.print-note{display:none}.mobile-label{display:none}
+@media(max-width:650px){.top-inner{padding:10px 8px}.top-line{align-items:stretch;flex-direction:column;gap:7px}.controls{align-items:stretch}.controls label{flex:1}#order-date{width:100%;padding:7px;min-height:40px}.print-button,.admin-button{min-height:40px;padding:7px 10px}.summary{margin-top:8px}.status-banner{padding:6px 8px;font-size:.84rem}.grand-total{font-size:.82rem}.grand-total strong{font-size:1.8rem}.updated{font-size:.72rem;margin-top:4px}main{padding:6px 3px}.section-title{margin:8px 3px 6px;font-size:1rem}.work-table-wrap{overflow-x:hidden;border-width:1px;border-radius:6px}.work-table{width:100%;min-width:0;table-layout:fixed}.work-table th,.work-table td{padding:6px 2px;line-height:1.15;overflow-wrap:anywhere}.work-table thead th{font-size:.68rem}.work-table thead th:nth-child(1){width:12%}.work-table thead th:nth-child(2){width:31%}.work-table thead th:nth-child(n+3):nth-child(-n+6){width:9%}.work-table thead th:nth-child(7){width:12%}.work-table .group{width:auto;font-size:.75rem}.work-table .product{min-width:0;font-size:.76rem;letter-spacing:-.03em}.work-table .slot{width:auto;font-size:.88rem}.work-table .total{width:auto;font-size:1rem}.desktop-label{display:none}.mobile-label{display:inline}}
+@media print{@page{size:A4 portrait;margin:9mm}body{background:#fff;color:#000}.top{position:static;box-shadow:none;border:0}.top-inner,main{max-width:none;padding:0}.controls{display:none!important}h1{font-size:18pt;text-align:center}.summary{margin:5mm 0 2mm}.status-banner{border:1px solid #000;background:#fff;color:#000;padding:4px 8px}.grand-total strong{color:#000;font-size:24pt}.updated{text-align:right;color:#000}.section-title{margin:3mm 0 2mm;font-size:14pt}.work-table-wrap{overflow:visible;border:1px solid #000;border-radius:0}.work-table{min-width:0}.work-table th,.work-table td{border:1px solid #000;padding:5px 4px}.work-table thead th{position:static;background:#e5e5e5!important;color:#000;font-size:10pt}.work-table .group{background:#eee!important;color:#000;font-size:10pt}.work-table .product{min-width:0;font-size:10pt}.work-table .slot{width:13%;font-size:11pt}.work-table .total{width:14%;background:#f3f3f3!important;color:#000;font-size:13pt}.print-note{display:block;margin-top:3mm;font-size:9pt}}
+</style>
 </head>
 <body>
-    <header class="top"><div class="top-inner">
-        <div class="top-line"><h1 id="today-date">MF 현장 작업지시서</h1><div class="controls"><label for="order-date">조회 날짜 <input id="order-date" type="date"></label><button class="print-button" type="button" onclick="window.print()">인쇄</button></div></div>
-        <div class="summary"><div id="status-banner" class="status-banner" role="status">데이터 대기 중...</div><div class="grand-total">누적 순건수 <strong id="grand-total">—</strong>건</div></div>
-        <p id="updated" class="updated"></p>
-    </div></header>
-    <main>
-        <h2 class="section-title">품목군별 작업수량</h2>
-        <div id="work-order"></div>
-        <p class="print-note">※ 1차·2차·마감은 추가 발주수량이며, 누적은 당일 전체 작업수량입니다.</p>
-    </main>
-
-    <script>
-        const firebaseConfig = {
-            apiKey: "AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0",
-            authDomain: "coupang-mf.firebaseapp.com",
-            databaseURL: "https://coupang-mf-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "coupang-mf",
-            storageBucket: "coupang-mf.firebasestorage.app",
-            messagingSenderId: "12362663151",
-            appId: "1:12362663151:web:51e7acce47f166a88b871a",
-            measurementId: "G-JBKQVKJXRE"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-
-        // KST(한국 시간) 기준으로 정확한 날짜(YYYY-MM-DD) 구하기
-        function getTodayKST() {
-            const curr = new Date();
-            const utc = curr.getTime() + (curr.getTimezoneOffset() * 60 * 1000);
-            const kstGap = 9 * 60 * 60 * 1000;
-            const kstDate = new Date(utc + kstGap);
-            
-            const year = kstDate.getFullYear();
-            const month = String(kstDate.getMonth() + 1).padStart(2, '0');
-            const day = String(kstDate.getDate()).padStart(2, '0');
-            
-            return `${year}-${month}-${day}`;
-        }
-
-        const dateInput = document.getElementById('order-date');
-        dateInput.value = getTodayKST();
-        let activeRef = null;
-        const slotOrder = ['1_slot_8','2_slot_10','3_slot_12','4_slot_13'];
-        const slotHeadings = {'1_slot_8':'8시','2_slot_10':'1차','3_slot_12':'2차','4_slot_13':'마감'};
-        const slotShortHeadings = slotHeadings;
-        const slotStatusLabels = {'1_slot_8':'8시 입력','2_slot_10':'1차 추가','3_slot_12':'2차 추가','4_slot_13':'마감'};
-        const catalog = [
-          {group:'오징어', items:['손질오징어(통) 500g','손질오징어(통) 900g','손질오징어(할복) 500g','손질오징어(할복) 900g']},
-          {group:'백조기', items:['손질 백조기 500g 1개','손질 백조기 900g 1개']},
-          {group:'고등어', items:['손질 고등어 500g','손질 고등어 900g']},
-          {group:'홍합', items:['생물 홍합 1kg','생물 홍합 3kg']},
-          {group:'물바지락', items:['생물 물바지락 700g 1개','생물 물바지락 1kg 1개']},
-          {group:'황돔', items:['손질 황돔 500g 1개','손질 황돔 900g 1개']},
-          {group:'새우', items:['활새우 800g','활새우 1.2kg']},
-          {group:'대합', items:['생물 대합 600g 1개','생물 대합 1kg 1개']},
-          {group:'뿔소라', items:['생물 뿔소라 600g','생물 뿔소라 1kg']},
-          {group:'돌멍게', items:['생물 돌멍게 400g','생물 돌멍게 1kg']}
-        ];
-        function escapeHtml(value) {
-            return String(value).replace(/[&<>"']/g, char => ({
-                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-            })[char]);
-        }
-        function showDate() {
-          if (activeRef) activeRef.off();
-          const selectedDate = dateInput.value;
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return;
-          document.getElementById('today-date').innerText = `${selectedDate} MF 현장 작업지시서`;
-          activeRef = db.ref('mf_orders/' + selectedDate);
-          activeRef.on('value', (snapshot) => {
-            const data = snapshot.val();
-            const workOrderEl = document.getElementById('work-order');
-            const statusBanner = document.getElementById('status-banner');
-            const grandTotalEl = document.getElementById('grand-total');
-            const updatedEl = document.getElementById('updated');
-            
-            workOrderEl.replaceChildren();
-            grandTotalEl.textContent = '0';
-            updatedEl.textContent = '';
-
-            if (data && data.slots) {
-                const latestSlot = [...slotOrder].reverse().find(key => data.slots[key]);
-                statusBanner.innerText = slotStatusLabels[latestSlot] || "진행 중";
-                if (latestSlot === '4_slot_13') {
-                    statusBanner.classList.add('closed');
-                } else {
-                    statusBanner.classList.remove('closed');
-                }
-
-                const byItem = {};
-                let grandTotalCount = 0;
-                let latestUpdate = '';
-                
-                slotOrder.forEach(key => {
-                    const slotData = data.slots[key];
-                    if (!slotData) return;
-                    const items = slotData.items || {};
-                    if (slotData.updatedAt > latestUpdate) latestUpdate = slotData.updatedAt;
-                    
-                    for (const [name, count] of Object.entries(items)) {
-                        const val = Number(count) || 0;
-                        if (!byItem[name]) byItem[name] = {};
-                        byItem[name][key] = val;
-                        grandTotalCount += val;
-                    }
-                });
-
-                const known = new Set(catalog.flatMap(group => group.items));
-                const groups = catalog.map(group => ({
-                    group:group.group,
-                    items:group.items.filter(name => Object.prototype.hasOwnProperty.call(byItem,name))
-                })).filter(group => group.items.length);
-                const unknown = Object.keys(byItem).filter(name => !known.has(name)).sort((a,b)=>a.localeCompare(b,'ko'));
-                if (unknown.length) groups.push({group:'기타',items:unknown});
-
-                if (!groups.length) {
-                    workOrderEl.innerHTML = '<div class="empty">표시할 품목이 없습니다.</div>';
-                } else {
-                    let html = '<div class="work-table-wrap"><table class="work-table"><thead><tr><th><span class="desktop-label">품목군</span><span class="mobile-label">군</span></th><th><span class="desktop-label">상품명</span><span class="mobile-label">품목</span></th>';
-                    html += slotOrder.map(key => `<th><span class="desktop-label">${slotHeadings[key]}</span><span class="mobile-label">${slotShortHeadings[key]}</span></th>`).join('');
-                    html += '<th>누적</th></tr></thead><tbody>';
-                    groups.forEach(group => {
-                        group.items.forEach((name,index) => {
-                            const values = slotOrder.map(key => Number(byItem[name]?.[key]) || 0);
-                            const total = values.reduce((sum,value)=>sum+value,0);
-                            html += `<tr class="${index===0?'group-start':''}">`;
-                            if(index===0) html += `<th class="group" rowspan="${group.items.length}">${escapeHtml(group.group)}</th>`;
-                            html += `<td class="product">${escapeHtml(name)}</td>`;
-                            html += values.map(value => `<td class="slot ${value===0?'zero':value<0?'cancel':''}">${value===0?'—':value}</td>`).join('');
-                            html += `<td class="total ${total<0?'cancel':''}">${total}</td></tr>`;
-                        });
-                    });
-                    html += '</tbody></table></div>';
-                    workOrderEl.innerHTML = html;
-                }
-                grandTotalEl.textContent = String(grandTotalCount);
-                if (latestUpdate) updatedEl.textContent = '마지막 반영: ' + new Date(latestUpdate).toLocaleString('ko-KR', {timeZone:'Asia/Seoul'});
-
-            } else {
-                statusBanner.innerText = "아직 등록된 발주가 없습니다.";
-                statusBanner.classList.remove('closed');
-            }
-          }, error => {
-            document.getElementById('status-banner').innerText = '데이터를 읽지 못했습니다: ' + error.message;
-            document.getElementById('grand-total').textContent = '—';
-          });
-        }
-        dateInput.addEventListener('change', showDate);
-        showDate();
-    </script>
+<header class="top"><div class="top-inner">
+<div class="top-line"><h1 id="today-date">MF 현장 작업지시서</h1><div class="controls"><label for="order-date">조회 날짜 <input id="order-date" type="date"></label><a class="admin-button" href="admin.html">수동입력</a><button class="print-button" type="button" onclick="window.print()">인쇄</button></div></div>
+<div class="summary"><div id="status-banner" class="status-banner" role="status">데이터 대기 중...</div><div class="grand-total">누적 순건수 <strong id="grand-total">—</strong>건</div></div>
+<p id="updated" class="updated"></p>
+</div></header>
+<main><h2 class="section-title">품목군별 작업수량</h2><div id="work-order"></div><p class="print-note">※ 1차·2차·3차·4차는 각 차수 추가 발주수량이며, 누적은 당일 전체 순수량입니다.</p></main>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0",authDomain:"coupang-mf.firebaseapp.com",databaseURL:"https://coupang-mf-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"coupang-mf",storageBucket:"coupang-mf.firebasestorage.app",messagingSenderId:"12362663151",appId:"1:12362663151:web:51e7acce47f166a88b871a",measurementId:"G-JBKQVKJXRE"};
+firebase.initializeApp(firebaseConfig);const db=firebase.database();
+function getTodayKST(){return new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())}
+function validDate(v){return /^\d{4}-\d{2}-\d{2}$/.test(v)}
+function decodeItemKey(key){if(!String(key).startsWith("k_"))return key;try{let b64=String(key).slice(2).replace(/-/g,"+").replace(/_/g,"/");while(b64.length%4)b64+="=";const binary=atob(b64);return new TextDecoder().decode(Uint8Array.from(binary,c=>c.charCodeAt(0)))}catch(e){return key}}
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char])}
+const dateInput=document.getElementById('order-date');const qp=new URLSearchParams(location.search);const queryDate=qp.get('date');dateInput.value=validDate(queryDate||'')?queryDate:getTodayKST();
+let activeRef=null;
+const slotOrder=['1_slot_8','2_slot_10','3_slot_12','4_slot_13'];
+const slotHeadings={'1_slot_8':'1차','2_slot_10':'2차','3_slot_12':'3차','4_slot_13':'4차'};
+const slotStatusLabels={'1_slot_8':'1차 반영','2_slot_10':'2차 반영','3_slot_12':'3차 반영','4_slot_13':'4차 마감'};
+const catalog=[
+{group:'오징어',items:['손질오징어(통) 500g','손질오징어(통) 900g','손질오징어(할복) 500g','손질오징어(할복) 900g']},
+{group:'백조기',items:['손질 백조기 500g 1개','손질 백조기 900g 1개']},
+{group:'고등어',items:['손질 고등어 500g','손질 고등어 900g']},
+{group:'홍합',items:['생물 홍합 1kg','생물 홍합 3kg']},
+{group:'물바지락',items:['생물 물바지락 700g 1개','생물 물바지락 1kg 1개']},
+{group:'황돔',items:['손질 황돔 500g 1개','손질 황돔 900g 1개']},
+{group:'새우',items:['활새우 800g','활새우 1.2kg']},
+{group:'대합',items:['생물 대합 600g 1개','생물 대합 1kg 1개']},
+{group:'뿔소라',items:['생물 뿔소라 600g','생물 뿔소라 1kg']},
+{group:'돌멍게',items:['생물 돌멍게 400g','생물 돌멍게 1kg']}
+];
+function showDate(){
+ if(activeRef)activeRef.off();const selectedDate=dateInput.value;if(!validDate(selectedDate))return;document.getElementById('today-date').innerText=`${selectedDate} MF 현장 작업지시서`;document.querySelector('.admin-button').href=`admin.html?date=${encodeURIComponent(selectedDate)}`;activeRef=db.ref('mf_orders/'+selectedDate);
+ activeRef.on('value',snapshot=>{
+  const data=snapshot.val(),workOrderEl=document.getElementById('work-order'),statusBanner=document.getElementById('status-banner'),grandTotalEl=document.getElementById('grand-total'),updatedEl=document.getElementById('updated');workOrderEl.replaceChildren();grandTotalEl.textContent='0';updatedEl.textContent='';
+  if(data&&data.slots){
+   const latestSlot=[...slotOrder].reverse().find(key=>data.slots[key]);statusBanner.innerText=slotStatusLabels[latestSlot]||'진행 중';statusBanner.classList.toggle('closed',latestSlot==='4_slot_13');
+   const byItem={};let grandTotalCount=0,latestUpdate='';
+   slotOrder.forEach(key=>{const slotData=data.slots[key];if(!slotData)return;if(slotData.updatedAt>latestUpdate)latestUpdate=slotData.updatedAt;for(const [storedKey,count] of Object.entries(slotData.items||{})){const name=decodeItemKey(storedKey),val=Number(count)||0;if(!byItem[name])byItem[name]={};byItem[name][key]=(byItem[name][key]||0)+val;grandTotalCount+=val}});
+   const known=new Set(catalog.flatMap(g=>g.items));const groups=catalog.map(g=>({group:g.group,items:g.items.filter(name=>Object.prototype.hasOwnProperty.call(byItem,name))})).filter(g=>g.items.length);const unknown=Object.keys(byItem).filter(name=>!known.has(name)).sort((a,b)=>a.localeCompare(b,'ko'));if(unknown.length)groups.push({group:'기타',items:unknown});
+   if(!groups.length)workOrderEl.innerHTML='<div class="empty">표시할 품목이 없습니다.</div>';else{
+    let html='<div class="work-table-wrap"><table class="work-table"><thead><tr><th><span class="desktop-label">품목군</span><span class="mobile-label">군</span></th><th><span class="desktop-label">상품명</span><span class="mobile-label">품목</span></th>'+slotOrder.map(k=>`<th>${slotHeadings[k]}</th>`).join('')+'<th>누적</th></tr></thead><tbody>';
+    groups.forEach(group=>group.items.forEach((name,index)=>{const values=slotOrder.map(k=>Number(byItem[name]?.[k])||0),total=values.reduce((s,v)=>s+v,0);html+=`<tr class="${index===0?'group-start':''}">`;if(index===0)html+=`<th class="group" rowspan="${group.items.length}">${escapeHtml(group.group)}</th>`;html+=`<td class="product">${escapeHtml(name)}</td>`+values.map(v=>`<td class="slot ${v===0?'zero':v<0?'cancel':''}">${v===0?'—':v}</td>`).join('')+`<td class="total ${total<0?'cancel':''}">${total}</td></tr>`}));html+='</tbody></table></div>';workOrderEl.innerHTML=html;
+   }
+   grandTotalEl.textContent=String(grandTotalCount);if(latestUpdate)updatedEl.textContent='마지막 반영: '+new Date(latestUpdate).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
+  }else{statusBanner.innerText='아직 등록된 발주가 없습니다.';statusBanner.classList.remove('closed')}
+ },error=>{document.getElementById('status-banner').innerText='데이터를 읽지 못했습니다: '+error.message;document.getElementById('grand-total').textContent='—'});
+}
+dateInput.addEventListener('change',showDate);showDate();
+</script>
 </body>
 </html>
-
