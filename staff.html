@@ -21,7 +21,7 @@
   <p class="hint">① 사진 고르기 → ② 숫자 확인하기 → ③ 발주 화면으로 보내기</p>
   <section><h2>처음 한 번만 로그인해 주세요</h2><p id="account">로그인 상태 확인 중…</p><button id="login">Google로 시작하기</button><button id="logout" hidden>로그아웃</button></section>
   <section><h2>① 발주 사진을 골라 주세요</h2>
-    <div class="row"><div><label for="date">발주 날짜</label><input id="date" type="date"></div><div><label for="slot">발주 시간</label><select id="slot"><option value="1_slot_8">8시</option><option value="2_slot_10">1차</option><option value="3_slot_12">2차</option><option value="4_slot_13">마감</option></select></div></div>
+    <div class="row"><div><label for="date">발주 날짜</label><input id="date" type="date"></div><div><label for="slot">발주 시간</label><select id="slot"><option value="1_slot_8">8시</option><option value="2_slot_10">10시</option><option value="3_slot_12">12시</option><option value="4_slot_13">13시 (마감)</option></select></div></div>
     <label for="photo">사진 선택</label><input id="photo" type="file" accept="image/jpeg,image/png,image/webp">
     <p class="hint">상품 이름과 숫자가 잘 보이는 사진 한 장을 골라 주세요. 아래에서 사진을 확인할 수 있어요. <details><summary>사진 이용 안내</summary>JPG·PNG·WEBP, 5MB 이하. 사진은 숫자를 읽기 위해 OpenAI로 보내집니다.</details></p>
     <img id="preview" hidden alt="선택한 발주 사진"><br><button id="analyze" disabled>사진에서 숫자 읽기</button><p id="status" class="status" role="status"></p>
