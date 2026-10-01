@@ -225,6 +225,19 @@ async function saveData(isAuto=false){
   }
 }
 function applyQuery(){
+  const reviewed = sessionStorage.getItem("mf-reviewed-order");
+  if (reviewed) {
+    sessionStorage.removeItem("mf-reviewed-order");
+    try {
+      const order = JSON.parse(reviewed);
+      if (typeof order.text === "string") {
+        params.set("text", order.text);
+        params.set("date", order.date);
+        params.set("slot", order.slot);
+        params.delete("commit");
+      }
+    } catch {}
+  }
   const queryDate=normalizeDate(params.get("date")||"");
   $("date").value=queryDate||today;
   const rawSlot=params.get("slot")||"";
