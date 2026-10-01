@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MF 사진 발주 확인</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-functions-compat.js"></script>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#f4f6f8;color:#17212b;font:16px system-ui,'Malgun Gothic',sans-serif}
+    main{max-width:800px;margin:auto;padding:20px}h1{font-size:26px}h2{font-size:19px}section{background:white;padding:20px;border:1px solid #d5dce3;border-radius:12px;margin:16px 0}
+    label{display:block;margin:14px 0 6px;font-weight:700}input,select,button{font:inherit}input[type=date],input[type=number],select{padding:10px;width:100%;border:1px solid #aeb9c3;border-radius:6px}
+    button{padding:12px 18px;border:0;border-radius:8px;background:#175caa;color:white;font-weight:700;cursor:pointer;margin:10px 0}button:disabled{background:#87939d;cursor:not-allowed}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.hint{color:#526272;font-size:14px;line-height:1.6}.status{white-space:pre-wrap;line-height:1.6}.error{color:#a52222}
+    img{max-width:100%;max-height:350px;object-fit:contain;margin:14px 0}table{width:100%;border-collapse:collapse}td,th{padding:10px;text-align:left;border-bottom:1px solid #e2e5ea}td:last-child,th:last-child{text-align:right}
+    a{color:#175caa}#warnings{white-space:pre-wrap;color:#a52222}label.check{font-weight:400;line-height:1.6}@media(max-width:540px){.row{grid-template-columns:1fr}}
+  </style>
+</head>
+<body><main>
+  <h1>MF 사진 발주 확인</h1>
+  <p class="hint">사진 올리기 → 품목·수량 확인 → 발주 입력 화면에서 저장</p>
+  <section><h2>1. 로그인</h2><p id="account">로그인 상태 확인 중…</p><button id="login">Google 계정으로 로그인</button><button id="logout" hidden>로그아웃</button></section>
+  <section><h2>2. 발주 사진</h2>
+    <div class="row"><div><label for="date">발주 날짜</label><input id="date" type="date"></div><div><label for="slot">차수</label><select id="slot"><option value="1_slot_8">8시</option><option value="2_slot_10">1차</option><option value="3_slot_12">2차</option><option value="4_slot_13">마감</option></select></div></div>
+    <label for="photo">피벗 화면 사진 한 장</label><input id="photo" type="file" accept="image/jpeg,image/png,image/webp">
+    <p class="hint">JPG·PNG·WEBP, 5MB 이하. 상품명·규격·건수·총합이 모두 보이도록 올려 주세요. 사진은 AI 판독을 위해 OpenAI로 전송됩니다.</p>
+    <img id="preview" hidden alt="선택한 발주 사진"><br><button id="analyze" disabled>사진 판독</button><p id="status" class="status" role="status"></p>
+  </section>
+  <section id="result" hidden><h2>3. 판독 결과 확인</h2><p id="warnings"></p><table><thead><tr><th>품목</th><th>건수</th></tr></thead><tbody id="rows"></tbody></table><p id="sum"></p>
+    <label for="expected">원본에서 직접 확인한 총 건수</label><input id="expected" type="number" min="1" step="1">
+    <label class="check"><input id="checked" type="checkbox"> 원본 사진과 모든 품목·규격·수량을 대조했습니다.</label>
+    <button id="transfer" disabled>확인한 결과를 발주 입력 화면으로</button><p class="hint">이 버튼은 발주를 저장하지 않습니다. 다음 화면에서 날짜·차수·추가/취소·저장 방식을 확인하고 저장하세요.</p>
+  </section><p><a href="admin.html">기존 발주 입력</a> · <a href="index.html">현장 작업지시서</a></p>
+</main><script>
+firebase.initializeApp({apiKey:'AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0',authDomain:'coupang-mf.firebaseapp.com',projectId:'coupang-mf'});
+const auth=firebase.auth(), fn=firebase.app().functions('asia-southeast1').httpsCallable('extractMfOrder',{timeout:120000});
+const $=id=>document.getElementById(id);
+let image=null, result=null, busy=false, previewUrl=null;
+const approved=()=>auth.currentUser?.email==='youngmooff@gmail.com'&&auth.currentUser.emailVerified;
+function state(){
+  $('analyze').disabled=busy||!image||!approved();
+  $('transfer').disabled=busy||!result||result.needsReview||!approved()||!$('checked').checked||Number($('expected').value)!==result.total;
+}
+function reset(){result=null;$('result').hidden=true;$('checked').checked=false;$('expected').value='';state();}
+$('date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul'}).format(new Date());
+auth.onAuthStateChanged(user=>{
+  $('account').textContent=user?(approved()?user.email+' · 시험 사용 가능':'이 계정은 시험 사용 권한이 없습니다.'):'승인된 Google 계정으로 로그인해 주세요.';
+  $('login').hidden=!!user;$('logout').hidden=!user;reset();
+});
+$('login').onclick=async()=>{try{await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}catch(e){$('status').textContent='로그인 실패: '+e.message}};
+$('logout').onclick=()=>auth.signOut();
+$('photo').onchange=async()=>{
+  reset();image=null;$('status').textContent='';if(previewUrl)URL.revokeObjectURL(previewUrl);$('preview').hidden=true;
+  const file=$('photo').files[0];if(!file){state();return}
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5000000){$('status').textContent='JPG·PNG·WEBP 사진(5MB 이하)을 선택하세요.';state();return}
+  const selected=file;
+  const reader=new FileReader();reader.onload=()=>{if($('photo').files[0]!==selected)return;image=reader.result;previewUrl=URL.createObjectURL(file);$('preview').src=previewUrl;$('preview').hidden=false;state()};reader.readAsDataURL(file);
+};
+$('analyze').onclick=async()=>{
+  if(busy||!approved()||!image)return;reset();busy=true;state();$('photo').disabled=true;$('status').textContent='사진을 판독하는 중입니다…';
+  try{
+    const response=await fn({image});result=response.data;$('rows').replaceChildren();
+    result.rows.forEach(item=>{const tr=document.createElement('tr');[item.name,String(item.quantity)].forEach(value=>{const td=document.createElement('td');td.textContent=value;tr.append(td)});$('rows').append(tr)});
+    $('warnings').textContent=result.warnings.join('\n');$('sum').textContent=`판독 합계: ${result.total}건 · 사진 총합: ${result.sourceTotal===null?'판독되지 않음':result.sourceTotal+'건'}`;
+    $('result').hidden=false;$('status').textContent=result.needsReview?'확인이 필요한 항목이 있습니다. 선명한 사진을 다시 올리거나 기존 입력 화면에서 직접 입력하세요.':'원본과 대조하고 총 건수를 직접 입력해 주세요.';
+  }catch(e){$('status').textContent='판독 실패: '+e.message}finally{busy=false;$('photo').disabled=false;state()}
+};
+['expected','checked','date','slot'].forEach(id=>$(id).addEventListener('change',state));$('expected').addEventListener('input',state);
+$('transfer').onclick=()=>{
+  state();if($('transfer').disabled)return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test($('date').value)){$('status').textContent='발주 날짜를 선택하세요.';return}
+  sessionStorage.setItem('mf-reviewed-order',JSON.stringify({date:$('date').value,slot:$('slot').value,text:result.rows.map(r=>`${r.name} : ${r.quantity}건`).join('\n')}));location.href='admin.html';
+};
+</script></body></html>
