@@ -44,7 +44,7 @@ function state(){
 function reset(){result=null;$('result').hidden=true;$('checked').checked=false;$('expected').value='';state();}
 $('date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul'}).format(new Date());
 auth.onAuthStateChanged(user=>{
-  $('account').textContent=user?(approved()?user.email+' · 준비됐어요':'이 계정은 시험 사용 권한이 없습니다.'):'승인된 Google로 시작하기해 주세요.';
+  $('account').textContent=user?(approved()?user.email+' · 준비됐어요':'이 계정은 시험 사용 권한이 없습니다.'):'먼저 아래 버튼을 눌러 로그인해 주세요.';
   $('login').hidden=!!user;$('logout').hidden=!user;reset();
 });
 $('login').onclick=async()=>{try{await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}catch(e){$('status').textContent='로그인이 되지 않았어요. 팝업을 허용한 뒤 ‘Google로 시작하기’를 다시 눌러 주세요.'}};
