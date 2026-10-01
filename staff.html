@@ -22,8 +22,9 @@
   <section><h2>처음 한 번만 로그인해 주세요</h2><p id="account">로그인 상태 확인 중…</p><button id="login">Google로 시작하기</button><button id="logout" hidden>로그아웃</button></section>
   <section><h2>① 발주 사진을 골라 주세요</h2>
     <div class="row"><div><label for="date">발주 날짜</label><input id="date" type="date"></div><div><label for="slot">발주 시간</label><select id="slot"><option value="1_slot_8">8시</option><option value="2_slot_10">10시</option><option value="3_slot_12">12시</option><option value="4_slot_13">13시 (마감)</option></select></div></div>
-    <label for="photo">사진 선택</label><input id="photo" type="file" accept="image/jpeg,image/png,image/webp">
-    <p class="hint">상품 이름과 숫자가 잘 보이는 사진 한 장을 골라 주세요. 아래에서 사진을 확인할 수 있어요. <details><summary>사진 이용 안내</summary>JPG·PNG·WEBP, 5MB 이하. 사진은 숫자를 읽기 위해 OpenAI로 보내집니다.</details></p>
+    <div class="row"><button id="takePhoto" type="button">📷 사진 찍기</button><button id="choosePhoto" type="button">저장된 사진 고르기</button></div>
+    <input id="camera" type="file" accept="image/*" capture="environment" hidden><input id="photo" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+    <p class="hint">‘사진 찍기’를 눌러 노트북의 발주 화면을 찍어 주세요. 상품 이름과 숫자, 맨 아래 총합이 모두 보이게 찍으면 돼요. <details><summary>사진 이용 안내</summary>JPG·PNG·WEBP, 5MB 이하. 사진은 숫자를 읽기 위해 OpenAI로 보내집니다.</details></p>
     <img id="preview" hidden alt="선택한 발주 사진"><br><button id="analyze" disabled>사진에서 숫자 읽기</button><p id="status" class="status" role="status"></p>
   </section>
   <section id="result" hidden><h2>② 사진과 숫자를 비교해 주세요</h2><p id="warnings"></p><table><thead><tr><th>품목</th><th>수량</th></tr></thead><tbody id="rows"></tbody></table><p id="sum"></p>
@@ -35,9 +36,10 @@
 firebase.initializeApp({apiKey:'AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0',authDomain:'coupang-mf.firebaseapp.com',projectId:'coupang-mf'});
 const auth=firebase.auth(), fn=firebase.app().functions('asia-southeast1').httpsCallable('extractMfOrder',{timeout:120000});
 const $=id=>document.getElementById(id);
-let image=null, result=null, busy=false, previewUrl=null;
+let image=null, result=null, busy=false, previewUrl=null, selection=0;
 const approved=()=>['youngmooff@gmail.com','withfresh11@gmail.com'].includes(auth.currentUser?.email)&&auth.currentUser.emailVerified;
 function state(){
+  ['camera','photo','takePhoto','choosePhoto'].forEach(id=>$(id).disabled=busy);
   $('analyze').disabled=busy||!image||!approved();
   $('transfer').disabled=busy||!result||result.needsReview||!approved()||!$('checked').checked||Number($('expected').value)!==result.total;
 }
@@ -49,13 +51,27 @@ auth.onAuthStateChanged(user=>{
 });
 $('login').onclick=async()=>{try{await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}catch(e){$('status').textContent='로그인이 되지 않았어요. 팝업을 허용한 뒤 ‘Google로 시작하기’를 다시 눌러 주세요.'}};
 $('logout').onclick=()=>auth.signOut();
-$('photo').onchange=async()=>{
-  reset();image=null;$('status').textContent='';if(previewUrl)URL.revokeObjectURL(previewUrl);$('preview').hidden=true;
-  const file=$('photo').files[0];if(!file){state();return}
-  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5000000){$('status').textContent='JPG·PNG·WEBP 사진(5MB 이하)을 선택하세요.';state();return}
-  const selected=file;
-  const reader=new FileReader();reader.onload=()=>{if($('photo').files[0]!==selected)return;image=reader.result;previewUrl=URL.createObjectURL(file);$('preview').src=previewUrl;$('preview').hidden=false;state()};reader.readAsDataURL(file);
-};
+$('takePhoto').onclick=()=>{$('camera').value='';$('camera').click();};
+$('choosePhoto').onclick=()=>{$('photo').value='';$('photo').click();};
+async function selectPhoto(input){
+  const file=input.files[0];if(!file)return;
+  const ticket=++selection;reset();image=null;$('status').textContent='';if(previewUrl)URL.revokeObjectURL(previewUrl);$('preview').hidden=true;state();
+  try {
+    let data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});
+    if(input.id==='camera'){
+      const picture=await new Promise((resolve,reject)=>{const p=new Image();p.onload=()=>resolve(p);p.onerror=reject;p.src=data});
+      const scale=Math.min(1,3000/Math.max(picture.naturalWidth,picture.naturalHeight));
+      const canvas=document.createElement('canvas');canvas.width=Math.round(picture.naturalWidth*scale);canvas.height=Math.round(picture.naturalHeight*scale);
+      const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(picture,0,0,canvas.width,canvas.height);
+      data=canvas.toDataURL('image/jpeg',0.9);
+    }
+    if(!/^data:image\/(jpeg|png|webp);base64,/.test(data)||data.length>6666700)throw new Error('size');
+    if(ticket!==selection)return;image=data;$('preview').src=data;$('preview').hidden=false;
+    $('status').textContent='사진이 준비됐어요. 글자와 숫자가 잘 보이는지 확인하고 아래 버튼을 눌러 주세요.';state();
+  }catch(e){if(ticket!==selection)return;$('status').textContent='사진을 열지 못했어요. 다시 찍거나 JPG·PNG 사진(5MB 이하)을 골라 주세요.';state()}
+}
+$('camera').onchange=()=>selectPhoto($('camera'));
+$('photo').onchange=()=>selectPhoto($('photo'));
 $('analyze').onclick=async()=>{
   if(busy||!approved()||!image)return;reset();busy=true;state();$('photo').disabled=true;$('status').textContent='사진에서 숫자를 읽고 있어요. 잠시만 기다려 주세요…';
   try{
