@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>사진으로 발주 입력</title>
+  <link rel="manifest" href="mf-app.webmanifest"><meta name="theme-color" content="#175caa"><link rel="icon" href="mf-icon-192.png">
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-functions-compat.js"></script>
@@ -19,6 +20,7 @@
 <body><main>
   <h1>사진으로 발주 입력</h1>
   <p class="hint">① 사진 고르기 → ② 숫자 확인하기 → ③ 발주 화면으로 보내기</p>
+  <section id="installPanel" hidden><h2>휴대폰에 앱으로 설치하기</h2><button id="installApp" type="button">MF Board 앱 설치</button><p id="installHint" class="hint">설치하면 홈 화면의 MF Board 아이콘으로 바로 열 수 있어요.</p></section>
   <section><h2>처음 한 번만 로그인해 주세요</h2><p id="account">로그인 상태 확인 중…</p><button id="login">Google로 시작하기</button><button id="logout" hidden>로그아웃</button></section>
   <section><h2>① 발주 사진을 골라 주세요</h2>
     <div class="row"><div><label for="date">발주 날짜</label><input id="date" type="date"></div><div><label for="slot">발주 시간</label><select id="slot"><option value="1_slot_8">8시</option><option value="2_slot_10">10시</option><option value="3_slot_12">12시</option><option value="4_slot_13">13시 (마감)</option></select></div></div>
@@ -87,5 +89,5 @@ $('transfer').onclick=()=>{
   if(!/^\d{4}-\d{2}-\d{2}$/.test($('date').value)){$('status').textContent='발주 날짜를 선택하세요.';return}
   sessionStorage.setItem('mf-reviewed-order',JSON.stringify({date:$('date').value,slot:$('slot').value,text:result.rows.map(r=>`${r.name} : ${r.quantity}건`).join('\n')}));location.href='admin.html';
 };
-</script></body></html>
+</script><script src="mf-app.js" defer></script></body></html>
 
