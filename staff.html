@@ -36,7 +36,7 @@ firebase.initializeApp({apiKey:'AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0',authDom
 const auth=firebase.auth(), fn=firebase.app().functions('asia-southeast1').httpsCallable('extractMfOrder',{timeout:120000});
 const $=id=>document.getElementById(id);
 let image=null, result=null, busy=false, previewUrl=null;
-const approved=()=>auth.currentUser?.email==='youngmooff@gmail.com'&&auth.currentUser.emailVerified;
+const approved=()=>['youngmooff@gmail.com','withfresh11@gmail.com'].includes(auth.currentUser?.email)&&auth.currentUser.emailVerified;
 function state(){
   $('analyze').disabled=busy||!image||!approved();
   $('transfer').disabled=busy||!result||result.needsReview||!approved()||!$('checked').checked||Number($('expected').value)!==result.total;

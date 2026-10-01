@@ -22,7 +22,7 @@ exports.extractMfOrder = onCall({
   cors:['https://kimhyunwoo0206.github.io']
 }, async request => {
   if (!request.auth || request.auth.token.email_verified !== true ||
-      request.auth.token.email !== 'youngmooff@gmail.com') {
+      !['youngmooff@gmail.com','withfresh11@gmail.com'].includes(request.auth.token.email)) {
     throw new HttpsError('permission-denied','승인된 Google 계정으로 로그인하세요.');
   }
   let image;
