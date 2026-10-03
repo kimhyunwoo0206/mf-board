@@ -1,36 +1,32 @@
 # MF 사진 판독 연결
 
-현재 Google 시험 계정은 youngmooff@gmail.com 하나입니다. 키는 Secret Manager의 OPENAI_API_KEY에서 서버만 읽습니다. 사진이나 키를 로그 또는 저장소에 기록하지 않습니다. OpenAI Responses의 store=false를 사용합니다.
+OpenAI 키는 기존 Secret Manager의 OPENAI_API_KEY를 서버에서만 읽습니다. 키와 사진을 로그나 저장소에 기록하지 않으며 Responses API의 store=false를 유지합니다. Firebase의 웹 설정 apiKey는 OpenAI 키가 아닙니다.
 
-## 배포 전
+## 판독 흐름
 
-1. Firebase Authentication에서 Google 로그인 공급자를 활성화하고 지원 이메일을 현재 계정으로 지정합니다.
-2. Authentication 설정의 승인 도메인에 kimhyunwoo0206.github.io를 추가합니다.
-3. Firestore 기본 데이터베이스를 asia-southeast1, Native 모드로 생성합니다. 이 저장소는 호출 한도 카운터 전용입니다. 기존 Firestore가 존재하면 보안 규칙을 덮어쓰지 말고 검토하세요. 기존 발주는 Realtime Database에 유지됩니다.
-4. OPENAI_API_KEY의 최신 버전이 사용 설정됨인지 확인합니다. 값을 출력하지 않습니다.
+1. 원본 상품 행과 대상 표 하단 총합계를 전사합니다. 기준표는 AI에 보내지 않습니다. 날짜/차수의 상위 합계와 오른쪽 다른 날짜 표는 제외합니다.
+2. 서버가 모든 원본 행의 수량을 합산합니다. 총합 미판독, 불명확한 행, 잘림, 총합 불일치이면 한 번 더 독립적으로 재분석합니다.
+3. 검산을 통과해야 27개 SKU 기준표와 정확 매칭합니다. 22개 기존 바코드 유지, 신규 5종의 바코드/상품번호는 사용자 제공 기준표 사진에서 반영했습니다.
+4. 계속 불일치하면 확인 필요 상태이며 전송/등록이 차단됩니다. 이미지 detail은 original을 요청하고 해당 값 미지원 오류일 때만 high로 재요청합니다. 각 API 요청은 일일 30회 한도에 포함합니다.
+5. 신규 미등록 SKU도 원본 검산합에 포함합니다. 기존 품목은 정상 전송하며 신규 행은 확인 대기 목록으로 표시합니다. 저장 시 pendingSkuRows에 원본 행을 보관하고 현장 작업 수량에는 포함하지 않습니다. 미등록 바코드가 있으면 이름으로 임의 매칭하지 않습니다.
+6. 사진과 모든 행을 직원이 비교하고 총합 입력/확인 체크 후 관리자 화면에서 저장합니다. 이중 확인은 동일 합계의 오인식도 확인하기 위한 절차입니다.
 
-## Cloud Shell 배포
+## 배포
 
-새 디렉터리로 이 브랜치를 가져온 뒤 실행합니다.
+Firebase 프로젝트 coupang-mf에 기존 계정으로 로그인한 Cloud Shell에서:
 
 ```sh
 cd functions
 npm install
-node validation.test.js
+npm test
 cd ..
-firebase deploy --project coupang-mf --only firestore:rules,functions:mf-ai
+firebase deploy --project coupang-mf --only functions:mf-ai
 ```
 
-브랜치 변경을 main에 병합하면 GitHub Pages에서 staff.html을 제공합니다. admin.html은 확인한 결과를 sessionStorage로 받아 채우며 자동 저장하지 않습니다. 기존 admin.html의 다른 입력 경로는 유지됩니다.
+기존 Firestore 규칙/서버 비밀값/Realtime Database 발주를 변경하지 않습니다. 서버 배포 후 프런트 변경을 main에 병합합니다. GitHub Pages에서 staff.html과 admin.html이 갱신됩니다.
 
 ## 검증
 
-- 로그아웃/다른 Google 계정의 AI 호출은 거절되어야 합니다.
-- 첫 시험은 실제 피벗 사진의 원본 총합과 22 SKU 기준표를 대조합니다.
-- 미등록·불명확 품목, 잘린 사진, 총합 불일치는 넘기기를 막아야 합니다.
-- 합계 입력 및 원본 대조 체크가 있어야 발주 입력 화면으로 이동합니다.
-- 넘기기만으로 Realtime Database 발주가 변경되어서는 안 됩니다.
-- 로그인된 시험 계정에만 서울 날짜 기준 하루 최대 30회(실패 시도 포함)를 허용합니다. Firestore 클라이언트 쓰기는 금지합니다. 서버 최대 인스턴스 1, 최소 0입니다. 30회는 비용 금액 한도가 아닙니다.
-- 직원 계정 추가는 서버 허용 계정과 화면 표시를 함께 변경한 뒤 배포합니다.
+functions/validation.test.js는 첨부된 2026-10-03 1차 사진을 사람이 전사한 14행을 사용하며 판독합/등록합 82를 검증합니다. 이 테스트만으로 실제 AI 사진 판독 성공을 증명하지 않습니다. 72→82 재분석, 두 번 불일치 시 차단, detail 폴백, 신규 SKU 보류, 27개 SKU 매칭, 한도 실패를 별도로 검증합니다.
 
-시험 사진 검증 전에는 정확도나 월 비용을 확정하지 않습니다.
+실제 API 시험은 배포된 직원 화면에서 원본 사진을 업로드하여 판독합 82/사진 총합 82와 14개 상품명/수량을 대조합니다. 시험 중 발주 저장 버튼은 누르지 않습니다.
