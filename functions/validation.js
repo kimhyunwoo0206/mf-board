@@ -20,7 +20,8 @@ function validateExtraction(value) {
   let total=0, complete=value.rows.length>0 && value.tableComplete===true;
   if(value.tableComplete!==true)warnings.push('대상 표 전체 행 확인 필요');
   value.rows.forEach((row,index)=>{
-    const valid=row && typeof row.name==='string' && row.name.trim() && row.uncertain===false && Number.isSafeInteger(row.quantity) && row.quantity>=0 && row.quantity<=100000 && (row.barcode===null || typeof row.barcode==='string');
+    const groupRow=row && /^(?:\d{6}|\d{8}|\d{4}-\d{2}-\d{2}|[1-4](?:차)?|총합계?|소계|행\s*레이블)$/.test(String(row.name).trim());
+    const valid=row && !groupRow && typeof row.name==='string' && row.name.trim() && row.uncertain===false && Number.isSafeInteger(row.quantity) && row.quantity>=0 && row.quantity<=100000 && (row.barcode===null || typeof row.barcode==='string');
     if (!valid) {complete=false;warnings.push(`${index+1}행: 원본 상품명 또는 수량 확인 필요`);}
     if(Number.isSafeInteger(row?.quantity) && row.quantity>=0 && row.quantity<=100000) total+=row.quantity;
     rawRows.push({...row,rowNumber:index+1});
