@@ -17,7 +17,8 @@ const compact=name=>fieldName(name).replace(/\s/g,'');
 function validateExtraction(value) {
   if (!value || !Array.isArray(value.rows) || value.rows.length>300 || !Array.isArray(value.warnings)) throw new Error('판독 형식 오류');
   const warnings=value.warnings.map(String), rawRows=[];
-  let total=0, complete=value.rows.length>0;
+  let total=0, complete=value.rows.length>0 && value.tableComplete===true;
+  if(value.tableComplete!==true)warnings.push('대상 표 전체 행 확인 필요');
   value.rows.forEach((row,index)=>{
     const valid=row && typeof row.name==='string' && row.name.trim() && row.uncertain===false && Number.isSafeInteger(row.quantity) && row.quantity>=0 && row.quantity<=100000 && (row.barcode===null || typeof row.barcode==='string');
     if (!valid) {complete=false;warnings.push(`${index+1}행: 원본 상품명 또는 수량 확인 필요`);}
@@ -28,7 +29,7 @@ function validateExtraction(value) {
   if(sourceTotal===null)warnings.push('사진 하단 총합 확인 필요');
   else if(sourceTotal!==total)warnings.push(`사진 총합과 판독 합계가 다릅니다: 사진 ${sourceTotal}, 판독 ${total}`);
   if(!value.rows.length)warnings.push('읽을 수 있는 품목이 없습니다.');
-  const verified=complete && sourceTotal!==null && sourceTotal===total && warnings.length===0;
+  const verified=complete && sourceTotal!==null && sourceTotal===total;
   // Catalog matching happens only after the complete transcription passes validation.
   if(!verified)return {rows:[],rawRows,pendingRows:[],total,sourceTotal,warnings,needsReview:true,status:'RECHECK',registeredTotal:0};
   const items=new Map(),pendingRows=[];
