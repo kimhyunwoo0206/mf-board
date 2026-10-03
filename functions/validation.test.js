@@ -1,24 +1,21 @@
-const {test} = require('node:test');
-const assert = require('node:assert/strict');
-const {catalog,validateImage,validateExtraction} = require('./validation');
-test('22 SKU and distinct squid variants',()=>{
-  assert.equal(catalog.length,22); assert.equal(new Set(catalog.map(x=>x.barcode)).size,22);
-  const result=validateExtraction({rows:[{barcode:'8809929791271',name:'오징어',quantity:7,uncertain:false},{barcode:'8809929791226',name:'오징어',quantity:3,uncertain:false}],total:10,warnings:[]});
-  assert.equal(result.rows[0].name,'손질오징어(할복) 500g'); assert.equal(result.rows[1].name,'손질오징어(통) 500g'); assert.equal(result.needsReview,false);
-});
-test('unknown barcode never falls back to matching name',()=>{
-  const r=validateExtraction({rows:[{barcode:'999',name:catalog[0].name,quantity:1,uncertain:false}],total:1,warnings:[]});
-  assert.equal(r.rows.length,0); assert.equal(r.needsReview,true);
-});
-test('uncertain rows and total mismatch block transfer',()=>{
-  const r=validateExtraction({rows:[{barcode:null,name:catalog[0].name,quantity:2,uncertain:false},{barcode:null,name:catalog[1].name,quantity:null,uncertain:true}],total:6,warnings:[]});
-  assert.equal(r.total,2); assert.equal(r.needsReview,true); assert.equal(r.warnings.length,2);
-});
-test('duplicate pivot rows aggregate, totals do not',()=>{
-  const row={barcode:catalog[0].barcode,name:'',quantity:2,uncertain:false};
-  const r=validateExtraction({rows:[row,row],total:4,warnings:[]}); assert.equal(r.rows.length,1);assert.equal(r.total,4);
-});
-test('reject remote URLs, bad base64 and oversized input',()=>{
-  assert.throws(()=>validateImage('https://example.com/a.png'));assert.throws(()=>validateImage('data:image/png;base64,a'));
-  assert.throws(()=>validateImage('data:image/png;base64,'+'A'.repeat(7_000_000)));
-});
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {catalog,validateImage,validateExtraction,fieldName}=require('./validation');
+const {extractOrder,instructions}=require('./extraction');
+const photoRows=[['생물 손질 오징어 500g',36],['생물 손질 오징어 900g',5],['손질 고등어 900g',2],['손질 백조기 500g 1개',10],['손질 백조기 900g 1개',1],['손질 황돔 500g 1개',4],['생물 홍합 1kg',6],['손질 고등어 500g',1],['생물 홍합 3kg',2],['손질 오징어(해동) 500g',7],['활새우 1.2kg',1],['생물 대합 1kg 1개',4],['생물 대합 600g 1개',2],['남해안 활 홍가리비 2.5kg',1]];
+// Manually transcribed from the attached 2026-10-03 slot 1 photo, not a live OCR result.
+const fixture={rows:photoRows.map(([name,quantity])=>({name:'[로켓프레시] 위드프레쉬 산지직송 국내산 '+name,quantity,barcode:null,uncertain:false})),total:82,warnings:[]};
+const reply=value=>({ok:true,status:200,json:async()=>({status:'completed',output:[{content:[{type:'output_text',text:JSON.stringify(value)}]}]})});
+test('27 catalog entries preserve original 22 and add five unique barcodes',()=>{assert.equal(catalog.length,27);assert.equal(new Set(catalog.map(x=>x.barcode)).size,27);assert.equal(catalog[21].barcode,'8809929791028');assert.equal(catalog[26].barcode,'8809929791462');});
+test('photo transcription matches all 14 rows and sums to 82',()=>{const r=validateExtraction(fixture);assert.equal(r.total,82);assert.equal(r.sourceTotal,82);assert.equal(r.needsReview,false);assert.equal(r.registeredTotal,82);assert.equal(r.pendingRows.length,0);assert.equal(r.rows.length,14);assert.equal(r.rows.find(x=>x.name==='홍가리비 2.5kg').quantity,1);assert.equal(r.rows.find(x=>x.name==='손질오징어(할복) 500g').quantity,7);});
+test('new five SKUs match photo names with weights intact',()=>{const names=['남해안 활 홍가리비 1kg','남해안 활 홍가리비 1.5kg','남해안 활 홍가리비 2.5kg','손질 갑오징어 400g (해동)','손질 갑오징어 600g (해동)'];const r=validateExtraction({rows:names.map(name=>({name:'[로켓프레시] 위드프레쉬 산지직송 '+name,barcode:null,quantity:1,uncertain:false})),total:5,warnings:[]});assert.equal(r.pendingRows.length,0);assert.deepEqual(r.rows.map(r=>r.name),catalog.slice(22).map(r=>r.name));});
+test('72 vs 82 prevents ALL catalog matching',()=>{const r=validateExtraction({...fixture,rows:fixture.rows.filter((_,i)=>i!==3)});assert.equal(r.total,72);assert.equal(r.needsReview,true);assert.deepEqual(r.rows,[]);assert.deepEqual(r.pendingRows,[]);});
+test('uncertain, missing total, warnings and malformed rows block',()=>{for(const v of [{...fixture,total:null},{...fixture,warnings:['표 잘림']},{...fixture,rows:[{name:'x',quantity:null,barcode:null,uncertain:true}]}])assert.equal(validateExtraction(v).needsReview,true);});
+test('new SKU does not fall back from unknown barcode or block known items',()=>{const r=validateExtraction({rows:[{name:catalog[0].name,barcode:'unknown',quantity:1,uncertain:false},{name:catalog[1].name,barcode:catalog[1].barcode,quantity:2,uncertain:false}],total:3,warnings:[]});assert.equal(r.rows.length,1);assert.equal(r.pendingRows.length,1);assert.equal(r.needsReview,false);});
+test('field naming preserves weight',()=>{assert.equal(fieldName('손질 갑오징어 900g'),'갑오징어 900g');assert.equal(fieldName('남해안 활 홍가리비 2.5kg'),'홍가리비 2.5kg');});
+test('duplicate product rows aggregate after verification',()=>{const row={name:catalog[0].name,barcode:null,quantity:2,uncertain:false};const r=validateExtraction({rows:[row,row],total:4,warnings:[]});assert.equal(r.rows.length,1);assert.equal(r.total,4);});
+test('invalid and remote images rejected',()=>{for(const v of ['https://example.com/a.png','data:image/png;base64,a','data:image/png;base64,'+'A'.repeat(7_000_000)])assert.throws(()=>validateImage(v));});
+test('one automatic independent retry recovers 72 to 82',async()=>{let calls=0,reserves=0;const r=await extractOrder({image:'mock',key:'mock',reserve:async()=>reserves++,fetchImpl:async(_,opts)=>{const b=JSON.parse(opts.body);assert.equal(b.input[0].content[1].detail,'original');assert.ok(!b.instructions.includes(JSON.stringify(catalog)));calls++;return reply(calls===1?{...fixture,rows:fixture.rows.filter((_,i)=>i!==3)}:fixture);}});assert.equal(calls,2);assert.equal(reserves,2);assert.equal(r.total,82);assert.equal(r.attempts,2);});
+test('persistent mismatch stops after two analyses',async()=>{let calls=0;const r=await extractOrder({image:'mock',key:'mock',reserve:async()=>{},fetchImpl:async()=>{calls++;return reply({...fixture,total:99});}});assert.equal(calls,2);assert.equal(r.needsReview,true);});
+test('unsupported original falls back to high once and charges quota',async()=>{let calls=0;const details=[];const r=await extractOrder({image:'mock',key:'mock',reserve:async()=>{},fetchImpl:async(_,opts)=>{details.push(JSON.parse(opts.body).input[0].content[1].detail);calls++;return calls===1?{ok:false,status:400,json:async()=>({error:{param:'detail',message:'Unsupported value original, supported values are high and low'}})}:reply(fixture);}});assert.deepEqual(details,['original','high']);assert.equal(r.detail,'high');assert.equal(r.attempts,1);});
+test('quota or unrelated API failures never bypass controls',async()=>{let calls=0;await assert.rejects(()=>extractOrder({image:'mock',key:'mock',reserve:async()=>{throw Error('quota')},fetchImpl:async()=>{calls++;}}));assert.equal(calls,0);await assert.rejects(()=>extractOrder({image:'mock',key:'mock',reserve:async()=>{},fetchImpl:async()=>({ok:false,status:401,json:async()=>({error:{message:'invalid key'}})})}));});

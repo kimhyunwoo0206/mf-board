@@ -84,7 +84,7 @@ const labels={
 };
 const slotAliases={"1":"1_slot_8","2":"2_slot_10","3":"3_slot_12","4":"4_slot_13"};
 const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-let existing=null,busy=false,autoStarted=false,alreadyApplied=false;
+let existing=null,busy=false,autoStarted=false,alreadyApplied=false,pendingRows=[];
 const params=new URLSearchParams(location.search);
 
 function validDate(v){return /^\d{4}-\d{2}-\d{2}$/.test(v)}
@@ -194,7 +194,9 @@ async function saveData(isAuto=false){
         const previous=decodeStoredItems(day.slots[slot]?.items||{});
         rawToSave=mergeRawItems(previous,items);
       }
+      const pending=mode==='merge'?[...(day.slots[slot]?.pendingSkuRows||[]),...pendingRows]:pendingRows;
       day.slots[slot]={label:labels[slot],items:encodeItems(rawToSave),updatedAt:savedAt};
+      if(pending.length)day.slots[slot].pendingSkuRows=pending;
       if(requestId) day.appliedRequests[requestId]=savedAt;
       const latestSlot=Object.keys(day.slots).filter(k=>labels[k]).sort().at(-1);
       day.lastStatus=labels[latestSlot]||labels[slot];
@@ -231,6 +233,8 @@ function applyQuery(){
     try {
       const order = JSON.parse(reviewed);
       if (typeof order.text === "string") {
+        if(order.sourceTotal!==undefined && order.sourceTotal!==order.total)throw new Error('검산 불일치');
+        pendingRows=Array.isArray(order.pendingRows)?order.pendingRows:[];
         params.set("text", order.text);
         params.set("date", order.date);
         params.set("slot", order.slot);
@@ -251,6 +255,7 @@ function applyQuery(){
   if(text){
     $("auto-banner").classList.add("show");
     $("auto-banner").textContent=auto?"ChatGPT 확인 결과를 자동 등록합니다…":"ChatGPT 확인 결과가 자동 입력되었습니다. 수정 후 저장할 수 있습니다.";
+    if(pendingRows.length)$("auto-banner").textContent+=`\n신규 SKU 확인 필요: ${pendingRows.map(r=>`${r.fieldName} ${r.quantity}건`).join(', ')}. 기존 품목을 저장하고 신규 행은 확인 대기 상태로 보관합니다.`;
   }
   return auto&&!!text;
 }

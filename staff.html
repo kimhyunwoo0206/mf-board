@@ -36,14 +36,14 @@
   </section><p><a href="admin.html">직접 숫자 입력하기</a> · <a href="index.html">작업지시서 보기</a></p>
 </main><script>
 firebase.initializeApp({apiKey:'AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0',authDomain:'coupang-mf.firebaseapp.com',projectId:'coupang-mf'});
-const auth=firebase.auth(), fn=firebase.app().functions('asia-southeast1').httpsCallable('extractMfOrder',{timeout:120000});
+const auth=firebase.auth(), fn=firebase.app().functions('asia-southeast1').httpsCallable('extractMfOrder',{timeout:300000});
 const $=id=>document.getElementById(id);
 let image=null, result=null, busy=false, previewUrl=null, selection=0;
 const approved=()=>['youngmooff@gmail.com','withfresh11@gmail.com'].includes(auth.currentUser?.email)&&auth.currentUser.emailVerified;
 function state(){
   ['camera','photo','takePhoto','choosePhoto'].forEach(id=>$(id).disabled=busy);
   $('analyze').disabled=busy||!image||!approved();
-  $('transfer').disabled=busy||!result||result.needsReview||!approved()||!$('checked').checked||Number($('expected').value)!==result.total;
+  $('transfer').disabled=busy||!result||result.needsReview||result.sourceTotal!==result.total||!result.rows.length||!approved()||!$('checked').checked||Number($('expected').value)!==result.total;
 }
 function reset(){result=null;$('result').hidden=true;$('checked').checked=false;$('expected').value='';state();}
 $('date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul'}).format(new Date());
@@ -60,7 +60,7 @@ async function selectPhoto(input){
   const ticket=++selection;reset();image=null;$('status').textContent='';if(previewUrl)URL.revokeObjectURL(previewUrl);$('preview').hidden=true;state();
   try {
     let data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});
-    if(input.id==='camera'){
+    if(input.id==='camera' && (!/^data:image\/(jpeg|png|webp);base64,/.test(data)||data.length>6666700)){
       const picture=await new Promise((resolve,reject)=>{const p=new Image();p.onload=()=>resolve(p);p.onerror=reject;p.src=data});
       const scale=Math.min(1,3000/Math.max(picture.naturalWidth,picture.naturalHeight));
       const canvas=document.createElement('canvas');canvas.width=Math.round(picture.naturalWidth*scale);canvas.height=Math.round(picture.naturalHeight*scale);
@@ -78,16 +78,18 @@ $('analyze').onclick=async()=>{
   if(busy||!approved()||!image)return;reset();busy=true;state();$('photo').disabled=true;$('status').textContent='사진에서 숫자를 읽고 있어요. 잠시만 기다려 주세요…';
   try{
     const response=await fn({image});result=response.data;$('rows').replaceChildren();
-    result.rows.forEach(item=>{const tr=document.createElement('tr');[item.name,String(item.quantity)].forEach(value=>{const td=document.createElement('td');td.textContent=value;tr.append(td)});$('rows').append(tr)});
-    $('warnings').textContent=result.warnings.join('\n');$('sum').textContent=`읽은 수량 합계: ${result.total}건 · 사진에 적힌 총합: ${result.sourceTotal===null?'직접 확인해 주세요':result.sourceTotal+'건'}`;
-    $('result').hidden=false;$('result').scrollIntoView({behavior:'smooth',block:'start'});$('status').textContent=result.needsReview?'사진에서 못 읽은 부분이 있어요. 더 선명한 사진을 고르거나 ‘직접 숫자 입력하기’를 눌러 주세요.':'숫자를 읽었어요! 사진과 목록을 비교한 뒤, 사진의 총합을 입력해 주세요.';
+    const displayRows=result.needsReview?(result.rawRows||[]):[...result.rows,...(result.pendingRows||[]).map(r=>({...r,name:r.fieldName+' · 신규 SKU 확인 필요'}))];
+    displayRows.forEach(item=>{const tr=document.createElement('tr');[item.name,item.quantity===null?'확인 필요':String(item.quantity)].forEach(value=>{const td=document.createElement('td');td.textContent=value;tr.append(td)});$('rows').append(tr)});
+    $('warnings').textContent=[...result.warnings,...(result.pendingRows||[]).map(r=>`신규 SKU 확인 필요: ${r.fieldName} (${r.quantity}건) — 기존 품목은 등록할 수 있습니다. 신규 품목은 확인 전 저장되지 않습니다.`)].join('\n');
+    $('sum').textContent=`원본 행 판독합: ${result.total}건 · 사진 총합: ${result.sourceTotal===null?'확인 필요':result.sourceTotal+'건'}\n등록할 기존 품목: ${result.registeredTotal??result.total}건 · 신규 SKU 보류: ${(result.pendingRows||[]).reduce((n,r)=>n+r.quantity,0)}건`;
+    $('result').hidden=false;$('result').scrollIntoView({behavior:'smooth',block:'start'});$('status').textContent=result.needsReview?'확인 필요: 자동 재분석 후에도 검산을 통과하지 못했습니다. 등록할 수 없습니다. 더 선명한 사진을 선택하세요.':`검산 완료${result.attempts===2?' (자동 재분석 완료)':''}. 사진의 모든 행과 수량을 비교해 주세요.`;
   }catch(e){$('status').textContent='숫자를 읽지 못했어요. 잠시 후 다시 눌러 주세요. 계속 안 되면 ‘직접 숫자 입력하기’를 이용해 주세요.'}finally{busy=false;$('photo').disabled=false;state()}
 };
 ['expected','checked','date','slot'].forEach(id=>$(id).addEventListener('change',state));$('expected').addEventListener('input',state);
 $('transfer').onclick=()=>{
   state();if($('transfer').disabled)return;
   if(!/^\d{4}-\d{2}-\d{2}$/.test($('date').value)){$('status').textContent='발주 날짜를 선택하세요.';return}
-  sessionStorage.setItem('mf-reviewed-order',JSON.stringify({date:$('date').value,slot:$('slot').value,text:result.rows.map(r=>`${r.name} : ${r.quantity}건`).join('\n')}));location.href='admin.html';
+  sessionStorage.setItem('mf-reviewed-order',JSON.stringify({date:$('date').value,slot:$('slot').value,text:result.rows.map(r=>`${r.name} : ${r.quantity}건`).join('\n'),pendingRows:result.pendingRows||[],sourceTotal:result.sourceTotal,total:result.total}));location.href='admin.html';
 };
 </script><script src="mf-app.js" defer></script></body></html>
 
