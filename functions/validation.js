@@ -34,7 +34,9 @@ function validateExtraction(value) {
   if(!verified)return {rows:[],rawRows,pendingRows:[],total,sourceTotal,warnings,needsReview:true,status:'RECHECK',registeredTotal:0};
   const items=new Map(),pendingRows=[];
   rawRows.forEach(row=>{
-    const item=row.barcode ? catalog.find(x=>x.barcode===row.barcode) : catalog.find(x=>compact(x.name)===compact(row.name) || (x.aliases||[]).some(a=>compact(a)===compact(row.name)));
+    const barcode=typeof row.barcode==='string' ? row.barcode.trim() : null;
+    const hasBarcode=barcode && !/^(null|none|n\/a|없음|미표기)$/i.test(barcode);
+    const item=hasBarcode ? catalog.find(x=>x.barcode===barcode) : catalog.find(x=>compact(x.name)===compact(row.name) || (x.aliases||[]).some(a=>compact(a)===compact(row.name)));
     if(!item){pendingRows.push({...row,fieldName:fieldName(row.name),status:'신규 SKU 확인 필요'});return;}
     if(row.quantity)items.set(item.name,(items.get(item.name)||0)+row.quantity);
   });
