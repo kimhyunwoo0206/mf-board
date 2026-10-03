@@ -7,7 +7,7 @@ function validateImage(image) {
   return image;
 }
 function fieldName(name) {
-  return String(name).trim().replace(/^\[로켓프레시\]\s*/, '').replace(/^위드프레쉬\s*산지직송\s*/, '').replace(/^국내산\s*/, '')
+  return String(name).trim().replace(/^\[로켓프레시\]\s*/, '').replace(/^(?:위드프레쉬|워드프레쉬)\s*산지직송\s*/, '').replace(/^국내산\s*/, '')
     .replace(/^남해안\s*활\s*홍가리비/, '홍가리비').replace(/^손질\s*갑오징어/, '갑오징어')
     .replace(/^생물\s*손질\s*오징어/, '손질오징어(통)').replace(/^손질\s*오징어\s*\(해동\)/, '손질오징어(할복)')
     .replace(/^(갑오징어\s*\d+(?:\.\d+)?(?:kg|g))\s*\(해동\)$/, '$1')

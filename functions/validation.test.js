@@ -22,3 +22,5 @@ test('quota or unrelated API failures never bypass controls',async()=>{let calls
 test('informational warnings do not block complete verified rows',()=>{const r=validateExtraction({...fixture,warnings:['행 레이블이 보임']});assert.equal(r.needsReview,false);assert.equal(r.rows.length,14);});
 test('absent barcode placeholders are not treated as unknown SKUs',()=>{for(const barcode of ['null','없음','N/A','none']){const r=validateExtraction({...fixture,rows:fixture.rows.map(row=>({...row,barcode}))});assert.equal(r.registeredTotal,82);assert.equal(r.pendingRows.length,0);}});
 test('date and slot group rows block even if totals happen to match',()=>{const r=validateExtraction({rows:[{name:'261003',quantity:82,barcode:null,uncertain:false}],total:82,warnings:[],tableComplete:true});assert.equal(r.needsReview,true);assert.equal(r.rows.length,0);});
+
+test('brand-only OCR spelling variant preserves exact product and weight matching',()=>{const r=validateExtraction({rows:[{name:'워드프레쉬 산지직송 국내산 생물 손질 오징어 500g',barcode:null,quantity:36,uncertain:false}],total:36,tableComplete:true,warnings:[]});assert.equal(r.registeredTotal,36);assert.equal(r.pendingRows.length,0);});
