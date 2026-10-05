@@ -2,7 +2,8 @@
 const {onCall,HttpsError}=require('firebase-functions/v2/https');
 const {defineSecret}=require('firebase-functions/params');
 const {initializeApp}=require('firebase-admin/app');
-const {getFirestore}=require('firebase-admin/firestore');
+const {getFirestore,FieldPath}=require('firebase-admin/firestore');
+const {makeInventoryService,StockError}=require('./inventory');
 const {validateImage,validateScope}=require('./validation');
 const {extractOrder}=require('./extraction');
 initializeApp({databaseURL:'https://coupang-mf-default-rtdb.asia-southeast1.firebasedatabase.app'});
@@ -26,3 +27,14 @@ exports.extractMfOrder=onCall({region:'asia-southeast1',secrets:[apiKey],memory:
   try{return await extractOrder({image,...scope,key:apiKey.value(),reserve});}
   catch(e){if(e instanceof HttpsError)throw e;throw new HttpsError('unavailable','사진 판독을 완료하지 못했습니다. 잠시 후 다시 시도하거나 선명한 사진을 선택하세요.');}
 });
+
+const stockOptions={region:'asia-southeast1',memory:'256MiB',cpu:1,minInstances:0,maxInstances:2,concurrency:10,timeoutSeconds:60,cors:['https://kimhyunwoo0206.github.io']};
+function stockService(){return makeInventoryService({db:getFirestore(),documentId:FieldPath.documentId(),allowedEmails:ALLOWED_EMAILS});}
+async function runStock(action){
+  try{return await action();}
+  catch(e){if(e instanceof StockError)throw new HttpsError(e.code,e.message);throw new HttpsError('unavailable','재고를 처리하지 못했습니다. 잠시 후 다시 시도하세요.');}
+}
+exports.saveMfStock=onCall(stockOptions,request=>runStock(()=>stockService().save(request)));
+// Link holders may view stock; only approved accounts may create immutable snapshots.
+exports.getMfStock=onCall(stockOptions,request=>runStock(()=>stockService().get(request.data||{})));
+

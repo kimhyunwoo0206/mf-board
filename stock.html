@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MF 현재고</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-functions-compat.js"></script>
+<script src="functions/stock-import.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6f9;color:#17212b;font:16px system-ui,'Malgun Gothic',sans-serif}main{max-width:1000px;margin:auto;padding:20px}header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{font-size:28px;margin:0}h2{font-size:21px}nav{display:flex;gap:14px}a{color:#175caa}section,details.panel{background:white;border:1px solid #d5dce3;border-radius:12px;padding:20px;margin:16px 0}summary{cursor:pointer;font-weight:800;font-size:19px}label{display:block;font-weight:700;margin:14px 0 6px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}input,select,textarea,button{font:inherit}input:not([type=checkbox]),select,textarea{width:100%;padding:11px;border:1px solid #aeb9c3;border-radius:7px}textarea{min-height:170px}button{border:0;border-radius:8px;padding:12px 18px;min-height:44px;background:#175caa;color:white;font-weight:750;cursor:pointer;margin:8px 4px 8px 0}button:disabled{background:#87939d;cursor:not-allowed}.secondary{background:#5b6570}.hint{font-size:14px;color:#526272;line-height:1.6}.status{white-space:pre-wrap;line-height:1.6}.error{color:#a52222}.ok{color:#166534}.metrics{display:flex;gap:24px;flex-wrap:wrap;padding:15px;background:#eef5ff;border-radius:9px}.metrics strong{font-size:26px;color:#123f6d}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}td,th{padding:12px 8px;text-align:left;border-bottom:1px solid #dce3e9}th{background:#173e63;color:white}td:nth-child(2){font-weight:800;font-size:20px;text-align:right;white-space:nowrap}th:nth-child(2){text-align:right}.identifiers{font-size:12px;color:#526272;display:block;margin-top:4px}.pending{color:#9a6700}.check{font-weight:400;line-height:1.6;background:#eef5ff;padding:14px;border-radius:8px}input[type=checkbox]{width:20px;height:20px;vertical-align:middle}[hidden]{display:none!important}@media(max-width:600px){main{padding:12px}.row{grid-template-columns:1fr}section,details.panel{padding:15px}td,th{padding:10px 5px;font-size:14px}.identifiers{overflow-wrap:anywhere}}
+@media print{body{background:white}header nav,#import-panel,.view-controls{display:none}main{max-width:none}section{border:0}th{background:#ddd;color:black}}
+</style></head><body><main>
+<header><h1>MF 현재고</h1><nav><a href="index.html">작업지시서</a><a href="#import-panel" id="open-import">재고 등록</a></nav></header>
+<section>
+<div class="view-controls"><button id="latest">최신 재고</button><button id="refresh" class="secondary">새로고침</button><button id="share" class="secondary">이 기록 링크 복사</button>
+<div class="row"><div><label for="view-date">조회 날짜</label><input id="view-date" type="date"></div><div><label for="history">등록 시간 / 기록</label><select id="history"><option value="">기록 확인 중…</option></select></div></div></div>
+<h2 id="asof">재고를 확인하고 있어요…</h2><p id="view-status" class="status" role="status"></p>
+<div id="metrics" class="metrics" hidden><span>품목 <strong id="item-count"></strong></span><span>총 재고 <strong id="stock-total"></strong>개</span><span>확인 필요 <strong id="pending-count"></strong>품목</span></div>
+<p id="recorded" class="hint"></p><p class="hint">등록된 기준 시점의 재고입니다. 이후 입출고는 자동 차감하지 않습니다.</p>
+<div id="stock-table" class="table-wrap"></div><p id="view-warnings" class="status hint"></p>
+</section>
+<details class="panel" id="import-panel"><summary>재고 등록 · 엑셀 복사해서 붙여넣기</summary>
+<p class="hint">쿠팡 재고 엑셀에서 제목 줄을 제외하고 <b>인벤토리부터 수량까지</b> 복사(Ctrl+C)해 아래에 붙여넣으세요(Ctrl+V). 열을 자동 연결하고 같은 SKU의 여러 재고 행을 합산합니다. 할당수량 열은 제외하세요.</p>
+<p id="account" class="hint">등록 계정 확인 중…</p><button id="login">Google로 로그인</button><button id="logout" class="secondary" hidden>로그아웃</button>
+<div class="row"><div><label for="stock-date">재고 기준 날짜</label><input id="stock-date" type="date"></div><div><label for="stock-time">재고 기준 시간</label><input id="stock-time" type="time"></div></div>
+<label for="raw">엑셀 재고 내용</label><textarea id="raw" placeholder="제목 줄 없이 인벤토리 → 로케이션 → SKU ID → 외부 SKU ID → 등급 → 바코드 → 상품명 → 수량 범위를 붙여넣으세요."></textarea>
+<button id="inspect">붙여넣은 열 확인</button>
+<div id="mapping-panel" hidden>
+<label class="check"><input id="has-header" type="checkbox"> 첫 줄은 열 제목입니다.</label>
+<div class="row"><div><label for="col-quantity">현재재고 수량 열</label><select id="col-quantity"></select></div><div><label for="col-name">상품명 열</label><select id="col-name"></select></div></div>
+<details><summary>바코드·SKU·로케이션 열 선택 (선택 사항)</summary>
+<div class="row"><div><label for="col-barcode">바코드 열</label><select id="col-barcode"></select></div><div><label for="col-productId">외부 SKU ID 열 (내부 SKU 제외)</label><select id="col-productId"></select></div><div><label for="col-rowId">인벤토리 ID 열</label><select id="col-rowId"></select></div><div><label for="col-location">로케이션 열</label><select id="col-location"></select></div></div></details>
+<label for="expected">엑셀에 표시된 총 재고 (없으면 빈칸)</label><input id="expected" type="number" min="0" step="1">
+<p class="hint">‘할당수량’이 아닌 현재재고 수량 열을 선택하세요. 빈 재고는 0으로 처리하지 않습니다. 0재고는 그대로 표시합니다.</p>
+<button id="preview">재고 집계하기</button></div>
+<p id="import-status" class="status" role="status"></p>
+<div id="preview-panel" hidden><h2>등록할 재고 확인</h2><p id="preview-summary" class="status"></p><div id="preview-table" class="table-wrap"></div>
+<label class="check"><input id="confirmed" type="checkbox"> 기준 날짜·시간과 품목별 수량을 엑셀과 비교했습니다.</label>
+<button id="save" disabled>현재고 기록 등록</button><p class="hint">이전 기록을 덮어쓰지 않고 날짜·시간별 새 기록으로 보관합니다.</p></div>
+</details></main>
+<script>
+firebase.initializeApp({apiKey:'AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0',authDomain:'coupang-mf.firebaseapp.com',projectId:'coupang-mf'});
+const auth=firebase.auth(),functions=firebase.app().functions('asia-southeast1'),read=functions.httpsCallable('getMfStock',{timeout:60000}),write=functions.httpsCallable('saveMfStock',{timeout:60000});
+const $=id=>document.getElementById(id),keys=['quantity','name','barcode','productId','rowId','location'];
+const catalogReady=fetch('./functions/catalog.json',{cache:'no-cache'}).then(r=>{if(!r.ok)throw Error('기준표를 불러오지 못했습니다.');return r.json()});
+const approved=()=>['youngmooff@gmail.com','withfresh11@gmail.com'].includes(auth.currentUser?.email)&&auth.currentUser.emailVerified;
+const kstNow=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,16);
+$('stock-date').value=kstNow().slice(0,10);$('stock-time').value=kstNow().slice(11);
+let draft=null,busy=false,loadTicket=0,current=null,currentDate='',currentId='',viewSelection={};
+function state(){ $('save').disabled=busy||!draft||!approved()||!$('confirmed').checked;document.querySelectorAll('#import-panel input,#import-panel select,#import-panel textarea,#inspect,#preview').forEach(el=>el.disabled=busy);$('login').disabled=busy;$('logout').disabled=busy; }
+function invalidate(){draft=null;$('preview-panel').hidden=true;$('confirmed').checked=false;state();}
+function renderTable(target,rows){
+ target.replaceChildren();const table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr');
+ ['현장명','현재재고','확인 상태'].forEach(s=>{const th=document.createElement('th');th.textContent=s;tr.append(th)});head.append(tr);table.append(head);const body=document.createElement('tbody');
+ rows.forEach(r=>{const line=document.createElement('tr'),name=document.createElement('td'),qty=document.createElement('td'),status=document.createElement('td');name.textContent=r.name;
+  const ids=document.createElement('span');ids.className='identifiers';ids.textContent=[r.barcode?'바코드 '+r.barcode:'',r.productId?'외부 SKU '+r.productId:'',r.sourceRowCount+'행 합산'].filter(Boolean).join(' · ');name.append(ids);
+  qty.textContent=r.quantity.toLocaleString('ko-KR');status.textContent=r.status;status.className=r.status==='확인 완료'?'':'pending';line.append(name,qty,status);body.append(line);
+ });table.append(body);target.append(table);
+}
+function setLink(){const url=new URL(location.href);url.search='';if(current){url.searchParams.set('date',current.date);url.searchParams.set('id',current.id);}history.replaceState(null,'',url);}
+async function load(options={}){
+ const ticket=++loadTicket;$('view-status').textContent='재고를 불러오고 있어요…';$('share').disabled=true;
+ try{
+  const response=await read(options);if(ticket!==loadTicket)return;viewSelection={...options};const data=response.data;current=data.snapshot;currentDate=data.date;currentId=current?.id||'';$('view-date').value=data.date;$('history').replaceChildren();
+  for(const h of data.history){const opt=document.createElement('option');opt.value=h.id;opt.textContent=h.asOf.slice(11)+' 기준 · '+h.itemCount+'품목 / '+h.total.toLocaleString('ko-KR')+'개 · 등록 '+new Date(h.savedAt).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour12:false});$('history').append(opt);}
+  if(!data.history.length){const opt=document.createElement('option');opt.textContent='이 날짜의 등록 기록 없음';opt.value='';$('history').append(opt);}
+  if(currentId)$('history').value=currentId;
+  $('metrics').hidden=!current;$('stock-table').replaceChildren();$('recorded').textContent='';$('view-warnings').textContent='';
+  if(current){
+   $('asof').textContent=current.asOf.replace('T',' ')+' 기준 재고';$('item-count').textContent=current.itemCount;$('stock-total').textContent=current.total.toLocaleString('ko-KR');$('pending-count').textContent=current.pendingCount;
+   $('recorded').textContent='등록 시각: '+new Date(current.savedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});renderTable($('stock-table'),current.rows);$('view-warnings').textContent=(current.warnings||[]).join('\n');
+   $('view-status').textContent=current.id===data.latestId?'가장 최신 등록 재고입니다.':'지난 재고 기록을 보고 있습니다.';$('share').disabled=false;
+  }else{$('asof').textContent=data.date+' 재고';$('view-status').textContent='아직 등록된 재고가 없습니다. 재고 등록에서 엑셀 내용을 붙여넣으세요.';}
+  setLink();
+ }catch(e){if(ticket===loadTicket)$('view-status').textContent='재고를 불러오지 못했습니다. 잠시 후 새로고침을 눌러 주세요.';}
+}
+auth.onAuthStateChanged(user=>{$('account').textContent=user?(approved()?user.email+' · 등록 가능':'이 계정은 재고 등록 권한이 없습니다.'):'조회는 로그인 없이 가능합니다. 등록하려면 승인 계정으로 로그인하세요.';$('login').hidden=!!user;$('logout').hidden=!user;state();});
+$('login').onclick=async()=>{try{await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}catch(e){$('import-status').textContent='팝업을 허용하고 다시 로그인하세요.'}};
+$('logout').onclick=()=>auth.signOut();$('open-import').onclick=()=>$('import-panel').open=true;
+$('latest').onclick=()=>load();$('refresh').onclick=()=>load(viewSelection);
+$('view-date').onchange=()=>load({date:$('view-date').value});$('history').onchange=()=>load({date:$('view-date').value,id:$('history').value});
+$('share').onclick=async()=>{if(!current)return;try{await navigator.clipboard.writeText(location.href);$('view-status').textContent='이 날짜·시간의 재고 링크를 복사했습니다.'}catch(e){$('view-status').textContent='주소창의 링크를 복사해 공유하세요.'}};
+$('raw').addEventListener('input',()=>{invalidate();$('mapping-panel').hidden=true;$('import-status').textContent='붙여넣은 열 확인을 눌러 주세요.';});
+['stock-date','stock-time','expected','has-header','confirmed',...keys.map(k=>'col-'+k)].forEach(id=>$(id).addEventListener('change',id==='confirmed'?state:invalidate));
+$('expected').addEventListener('input',invalidate);
+$('inspect').onclick=()=>{
+ invalidate();try{const info=MfStockImport.inspect($('raw').value);keys.forEach(k=>{const select=$('col-'+k);select.replaceChildren();const none=document.createElement('option');none.value='-1';none.textContent=k==='quantity'?'현재재고 열 선택':'없음';select.append(none);info.headers.forEach((h,i)=>{const opt=document.createElement('option');opt.value=String(i);opt.textContent=(i+1)+'열 · '+h;select.append(opt)});select.value=String(info.mapping[k]);});$('has-header').checked=info.hasHeader;$('mapping-panel').hidden=false;$('import-status').className='status';$('import-status').textContent=info.rowCount+'행을 찾았습니다. 현재재고 수량 열을 확인하고 재고 집계하기를 누르세요.';}catch(e){$('import-status').className='status error';$('import-status').textContent=e.message;}
+};
+$('preview').onclick=async()=>{
+ invalidate();const request={date:$('stock-date').value,time:$('stock-time').value,text:$('raw').value,hasHeader:$('has-header').checked,columns:Object.fromEntries(keys.map(k=>[k,Number($('col-'+k).value)])),expectedTotal:$('expected').value===''?null:Number($('expected').value),requestId:crypto.randomUUID()};
+ busy=true;state();
+ try{const catalog=await catalogReady;const parsed=MfStockImport.parseStock(request.text,{...request,catalog});if(!parsed.verified)throw Error(parsed.errors.join('\n'));if(!request.date||!request.time)throw Error('재고 기준 날짜와 시간을 선택하세요.');
+  draft={request,parsed};$('preview-panel').hidden=false;$('preview-summary').textContent=request.date+' '+request.time+' 기준 · '+parsed.itemCount+'품목 / 총 '+parsed.total+'개\n원본 '+parsed.sourceRowCount+'행 합 = SKU별 합 '+parsed.total+'개\n'+parsed.warnings.join('\n');
+  renderTable($('preview-table'),parsed.rows);$('import-status').className='status ok';$('import-status').textContent='집계 완료. 아래 품목과 수량을 엑셀과 비교하세요.';
+ }catch(e){$('import-status').className='status error';$('import-status').textContent=e.message;}finally{busy=false;state();}
+};
+$('save').onclick=async()=>{
+ if(busy||!draft||!approved()||!$('confirmed').checked)return;const payload=draft.request;busy=true;state();$('import-status').textContent='재고 기록을 등록하고 있어요…';
+ try{const response=await write(payload);draft=null;$('confirmed').checked=false;$('import-status').className='status ok';$('import-status').textContent='등록 완료. 이전 기록을 보존하고 새 재고 기록을 추가했습니다.';await load({date:response.data.snapshot.date,id:response.data.snapshot.id});}
+ catch(e){$('import-status').className='status error';$('import-status').textContent=e.message||'등록하지 못했습니다. 다시 시도하세요.';}finally{busy=false;state();}
+};
+const params=new URLSearchParams(location.search);load(Object.fromEntries(['date','id'].filter(k=>params.has(k)).map(k=>[k,params.get(k)])));
+if(location.hash==='#import-panel')$('import-panel').open=true;
+</script></body></html>

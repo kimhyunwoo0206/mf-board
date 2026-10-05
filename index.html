@@ -21,7 +21,7 @@ h1{font-size:clamp(1.25rem,5vw,1.8rem);margin:0}#order-date{font:inherit;font-si
 </head>
 <body>
 <header class="top"><div class="top-inner">
-<div class="top-line"><h1 id="today-date">MF 현장 작업지시서</h1><div class="controls"><label for="order-date">조회 날짜 <input id="order-date" type="date"></label><a class="admin-button" href="admin.html">수동입력</a><button class="print-button" type="button" onclick="window.print()">인쇄</button></div></div>
+<div class="top-line"><h1 id="today-date">MF 현장 작업지시서</h1><div class="controls"><label for="order-date">조회 날짜 <input id="order-date" type="date"></label><a class="admin-button" href="admin.html">수동입력</a><a class="admin-button" href="stock.html">현재고</a><button class="print-button" type="button" onclick="window.print()">인쇄</button></div></div>
 <div class="summary"><div id="status-banner" class="status-banner" role="status">데이터 대기 중...</div><div class="grand-total">누적 순건수 <strong id="grand-total">—</strong>건</div></div>
 <p id="updated" class="updated"></p>
 </div></header>
@@ -71,3 +71,4 @@ dateInput.addEventListener('change',showDate);showDate();
 </script>
 </body>
 </html>
+
