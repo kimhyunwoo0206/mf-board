@@ -22,7 +22,7 @@ function publicSnapshot(value){
  return Object.fromEntries(fields.filter(k=>value[k]!==undefined).map(k=>[k,value[k]]));
 }
 function metadata(value){const {id,asOf,savedAt,total,itemCount,pendingCount}=value;return {id,asOf,savedAt,total,itemCount,pendingCount};}
-function makeInventoryService({db,documentId,allowedEmails,now=()=>new Date()}){
+function makeInventoryService({db,allowedEmails,now=()=>new Date()}){
  const collection=db.collection('mf_stock_snapshots');
  const latestRef=db.collection('mf_stock_meta').doc('latest');
  const isNewer=(a,b)=>!b||a.asOf>b.asOf||(a.asOf===b.asOf&&a.savedAt>b.savedAt);
@@ -49,7 +49,7 @@ function makeInventoryService({db,documentId,allowedEmails,now=()=>new Date()}){
   if(data.id!==undefined && (typeof data.id!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}_[a-f0-9-]{36}$/i.test(data.id)))throw new StockError('invalid-argument','조회 기록을 확인하세요.');
   const latest=await latestRef.get(),latestValue=latest.data();
   const date=data.date||latestValue?.id.slice(0,10)||new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul'}).format(now());
-  const historySnap=await collection.where(documentId,'>=',date+'T').where(documentId,'<',date+'U').orderBy(documentId,'desc').limit(100).get();
+  const historySnap=await collection.where('id','>=',date+'T').where('id','<',date+'U').orderBy('id','desc').limit(100).get();
   const values=historySnap.docs.map(x=>x.data()).sort((a,b)=>b.asOf.localeCompare(a.asOf)||b.savedAt.localeCompare(a.savedAt));
   let chosen=values[0]||null;
   const day=await db.collection('mf_stock_meta').doc('day_'+date).get();
