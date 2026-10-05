@@ -39,7 +39,7 @@
   return {headers,hasHeader:header,mapping,rowCount:data.length-(header?1:0)};
  }
  function parseStock(text,{columns,hasHeader=true,catalog,expectedTotal=null}={}){
-  const data=cells(text),errors=[],warnings=[],rawRows=[],items=new Map(),seen=new Map();
+  const data=cells(text),errors=[],warnings=[],rawRows=[],items=new Map(),seen=new Set();
   if(!data.length)throw new Error('엑셀 내용을 붙여넣으세요.');
   if(!Array.isArray(catalog)||!columns||!Number.isInteger(columns.quantity)||columns.quantity<0)throw new Error('현재재고 수량 열을 선택하세요.');
   const width=Math.max(...data.map(r=>r.length)),selected=Object.values(columns).filter(x=>Number.isInteger(x)&&x>=0);
@@ -69,11 +69,10 @@
    const raw={name,barcode,productId,quantity,rowId,location,line};
    const abbreviated=/^\d+(?:\.\d+)?e[+-]?\d+$/i.test(rowId);
    if(abbreviated)abbreviatedIds=true;
-   if(rowId&&!abbreviated){
-    const identity=JSON.stringify([rowId,location]),signature=JSON.stringify([key,quantity]);
-    if(seen.has(identity)){if(seen.get(identity)!==signature)errors.push(line+'행: 같은 인벤토리 ID의 상품 또는 수량이 다릅니다.');else duplicateCount++;return;}
-    seen.set(identity,signature);
-   }
+   // Inventory IDs may repeat across lots or be rounded by Excel. Preserve every source row.
+   const identity=JSON.stringify([rowId,location]);
+   if(rowId&&!abbreviated&&seen.has(identity))duplicateCount++;
+   if(rowId&&!abbreviated)seen.add(identity);
    rawRows.push(raw);total+=quantity;
    if(!items.has(key))items.set(key,{name:matched?.name||name||barcode||productId,barcode:barcode||matched?.barcode||'',productId:productId||matched?.productId||'',quantity:0,sourceRowCount:0,status:matched?'확인 완료':'신규 SKU 확인 필요'});
    const item=items.get(key);item.quantity+=quantity;item.sourceRowCount++;
@@ -84,7 +83,7 @@
   const rows=[...items.values()],pendingCount=rows.filter(x=>x.status!=='확인 완료').length;
   if(sourceTotal===null && expectedTotal===null)warnings.push('원본 총합 미제공: 행별 수량과 SKU별 합계의 일치만 확인했습니다.');
   if(pendingCount)warnings.push('신규 SKU '+pendingCount+'품목은 원문 식별자로 표시하며 확인이 필요합니다.');
-  if(duplicateCount)warnings.push('같은 인벤토리 ID·로케이션의 중복 '+duplicateCount+'행을 한 번만 집계했습니다.');
+  if(duplicateCount)warnings.push('인벤토리 ID·로케이션이 반복된 '+duplicateCount+'행도 모두 합산했습니다. 엑셀 범위를 한 번만 붙여넣었는지 확인하세요.');
   if(abbreviatedIds)warnings.push('인벤토리 번호가 지수 표기로 축약되었습니다. 번호로 중복 제거하지 않고 복사한 각 행을 합산했습니다.');
   return {rows,total,itemCount:rows.length,sourceRowCount:rawRows.length,duplicateCount,pendingCount,sourceTotal,rawRows,errors,warnings,verified:errors.length===0 && rows.reduce((n,r)=>n+r.quantity,0)===total};
  }
