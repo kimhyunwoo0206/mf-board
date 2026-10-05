@@ -26,7 +26,7 @@
     <div class="row"><div><label for="date">발주 날짜</label><input id="date" type="date"></div><div><label for="slot">발주 시간</label><select id="slot"><option value="1_slot_8">8시</option><option value="2_slot_10">10시</option><option value="3_slot_12">12시</option><option value="4_slot_13">13시 (마감)</option></select></div></div>
     <div class="row"><button id="takePhoto" type="button">📷 사진 찍기</button><button id="choosePhoto" type="button">저장된 사진 고르기</button></div>
     <input id="camera" type="file" accept="image/*" capture="environment" hidden><input id="photo" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-    <p class="hint">‘사진 찍기’를 눌러 노트북의 발주 화면을 찍어 주세요. 상품 이름과 숫자, 맨 아래 총합이 모두 보이게 찍으면 돼요. <details><summary>사진 이용 안내</summary>JPG·PNG·WEBP, 5MB 이하. 사진은 숫자를 읽기 위해 OpenAI로 보내집니다.</details></p>
+    <p class="hint">‘사진 찍기’를 눌러 노트북의 발주 화면을 찍어 주세요. 상품 이름과 숫자, 맨 아래 총합이 모두 보이게 찍으면 돼요. <details><summary>사진 이용 안내</summary>JPG·PNG·WEBP, 5MB 이하. 사진은 숫자를 읽기 위해 외부 AI 판독 서비스로 전송됩니다.</details></p>
     <img id="preview" hidden alt="선택한 발주 사진"><br><button id="analyze" disabled>사진에서 숫자 읽기</button><p id="status" class="status" role="status"></p>
   </section>
   <section id="result" hidden><h2>② 사진과 숫자를 비교해 주세요</h2><p id="warnings"></p><table><thead><tr><th>품목</th><th>수량</th></tr></thead><tbody id="rows"></tbody></table><p id="sum"></p>

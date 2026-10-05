@@ -6,7 +6,7 @@ const {getFirestore}=require('firebase-admin/firestore');
 const {validateImage}=require('./validation');
 const {extractOrder}=require('./extraction');
 initializeApp({databaseURL:'https://coupang-mf-default-rtdb.asia-southeast1.firebasedatabase.app'});
-const apiKey=defineSecret('OPENAI_API_KEY');
+const apiKey=defineSecret('GEMINI_API_KEY');
 exports.extractMfOrder=onCall({region:'asia-southeast1',secrets:[apiKey],memory:'256MiB',cpu:1,minInstances:0,maxInstances:1,concurrency:1,timeoutSeconds:300,cors:['https://kimhyunwoo0206.github.io']},async request=>{
   if(!request.auth || request.auth.token.email_verified!==true || !['youngmooff@gmail.com','withfresh11@gmail.com'].includes(request.auth.token.email))throw new HttpsError('permission-denied','승인된 Google 계정으로 로그인하세요.');
   let image;
