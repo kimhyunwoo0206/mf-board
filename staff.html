@@ -23,14 +23,14 @@
   <section id="installPanel" hidden><h2>휴대폰에 앱으로 설치하기</h2><button id="installApp" type="button">MF Board 앱 설치</button><p id="installHint" class="hint">설치하면 홈 화면의 MF Board 아이콘으로 바로 열 수 있어요.</p></section>
   <section><h2>처음 한 번만 로그인해 주세요</h2><p id="account">로그인 상태 확인 중…</p><button id="login">Google로 시작하기</button><button id="logout" hidden>로그아웃</button></section>
   <section><h2>① 발주 사진을 골라 주세요</h2>
-    <div class="row"><div><label for="date">발주 날짜</label><input id="date" type="date"></div><div><label for="slot">발주 시간</label><select id="slot"><option value="1_slot_8">8시</option><option value="2_slot_10">10시</option><option value="3_slot_12">12시</option><option value="4_slot_13">13시 (마감)</option></select></div></div>
+    <div class="row"><div><label for="date">발주 날짜</label><input id="date" type="date"></div><div><label for="slot">읽을 차수 / 발주 시간</label><select id="slot"><option value="1_slot_8">1차 · 8시</option><option value="2_slot_10">2차 · 10시</option><option value="3_slot_12">3차 · 12시</option><option value="4_slot_13">4차 · 13시 (마감)</option></select></div></div>
     <div class="row"><button id="takePhoto" type="button">📷 사진 찍기</button><button id="choosePhoto" type="button">저장된 사진 고르기</button></div>
     <input id="camera" type="file" accept="image/*" capture="environment" hidden><input id="photo" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-    <p class="hint">‘사진 찍기’를 눌러 노트북의 발주 화면을 찍어 주세요. 상품 이름과 숫자, 맨 아래 총합이 모두 보이게 찍으면 돼요. <details><summary>사진 이용 안내</summary>JPG·PNG·WEBP, 5MB 이하. 사진은 숫자를 읽기 위해 외부 AI 판독 서비스로 전송됩니다.</details></p>
+    <p class="hint">날짜와 읽을 차수를 먼저 고르세요. 선택한 차수를 펼쳐서 차수 머리글의 소계 숫자와 첫 상품부터 마지막 상품까지 모두 보이게 찍어 주세요. 앞차수가 함께 보여도 선택한 차수만 등록합니다. <details><summary>사진 이용 안내</summary>JPG·PNG·WEBP, 5MB 이하. 사진은 숫자를 읽기 위해 OpenAI 판독 서비스로 전송됩니다.</details></p>
     <img id="preview" hidden alt="선택한 발주 사진"><br><button id="analyze" disabled>사진에서 숫자 읽기</button><p id="status" class="status" role="status"></p>
   </section>
   <section id="result" hidden><h2>② 사진과 숫자를 비교해 주세요</h2><p id="warnings"></p><table><thead><tr><th>품목</th><th>수량</th></tr></thead><tbody id="rows"></tbody></table><p id="sum"></p>
-    <label for="expected">사진 맨 아래의 총합은 몇 개인가요?</label><input id="expected" type="number" min="1" step="1">
+    <label for="expected">선택한 차수 머리글의 소계는 몇 개인가요? (하루 총합 제외)</label><input id="expected" type="number" min="1" step="1">
     <label class="check"><input id="checked" type="checkbox"> 사진과 아래 목록을 비교했어요. 상품과 숫자가 모두 맞아요.</label>
     <button id="transfer" disabled>③ 발주 화면으로 보내기</button><p class="hint">다음 화면에서 한 번 더 확인하고 ‘저장’을 누르면 끝나요.</p>
   </section><p><a href="admin.html">직접 숫자 입력하기</a> · <a href="index.html">작업지시서 보기</a></p>
@@ -38,6 +38,8 @@
 firebase.initializeApp({apiKey:'AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0',authDomain:'coupang-mf.firebaseapp.com',projectId:'coupang-mf'});
 const auth=firebase.auth(), fn=firebase.app().functions('asia-southeast1').httpsCallable('extractMfOrder',{timeout:300000});
 const $=id=>document.getElementById(id);
+const selectedScope=()=>({date:$('date').value,slot:Number($('slot').value.split('_')[0])});
+const sameScope=scope=>scope?.date===$('date').value && scope?.slot===selectedScope().slot;
 let image=null, result=null, busy=false, previewUrl=null, selection=0;
 // 신규 직원 이메일을 받으면 functions/index.js의 승인 목록에도 함께 추가합니다.
 const ALLOWED_EMAILS = [
@@ -46,9 +48,9 @@ const ALLOWED_EMAILS = [
 ];
 const approved=()=>ALLOWED_EMAILS.includes(auth.currentUser?.email)&&auth.currentUser.emailVerified;
 function state(){
-  ['camera','photo','takePhoto','choosePhoto'].forEach(id=>$(id).disabled=busy);
+  ['camera','photo','takePhoto','choosePhoto','date','slot'].forEach(id=>$(id).disabled=busy);
   $('analyze').disabled=busy||!image||!approved();
-  $('transfer').disabled=busy||!result||result.needsReview||result.sourceTotal!==result.total||!result.rows.length||!approved()||!$('checked').checked||Number($('expected').value)!==result.total;
+  $('transfer').disabled=busy||!result||!sameScope(result.scope)||result.needsReview||result.sourceTotal!==result.total||!result.rows.length||!approved()||!$('checked').checked||Number($('expected').value)!==result.total;
 }
 function reset(){result=null;$('result').hidden=true;$('checked').checked=false;$('expected').value='';state();}
 $('date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul'}).format(new Date());
@@ -82,15 +84,21 @@ $('photo').onchange=()=>selectPhoto($('photo'));
 $('analyze').onclick=async()=>{
   if(busy||!approved()||!image)return;reset();busy=true;state();$('photo').disabled=true;$('status').textContent='사진에서 숫자를 읽고 있어요. 잠시만 기다려 주세요…';
   try{
-    const response=await fn({image});result=response.data;$('rows').replaceChildren();
+    const scope=selectedScope(),userId=auth.currentUser.uid;
+    const response=await fn({image,...scope});
+    if(auth.currentUser?.uid!==userId || !sameScope(scope))return;
+    result=response.data;
+    if(!sameScope(result.scope))throw new Error('scope');
+    $('rows').replaceChildren();
     const displayRows=result.needsReview?(result.rawRows||[]):[...result.rows,...(result.pendingRows||[]).map(r=>({...r,name:r.fieldName+' · 신규 SKU 확인 필요'}))];
     displayRows.forEach(item=>{const tr=document.createElement('tr');[item.name,item.quantity===null?'확인 필요':String(item.quantity)].forEach(value=>{const td=document.createElement('td');td.textContent=value;tr.append(td)});$('rows').append(tr)});
     $('warnings').textContent=[...result.warnings,...(result.pendingRows||[]).map(r=>`신규 SKU 확인 필요: ${r.fieldName} (${r.quantity}건)${r.barcode?' · 판독 바코드: '+r.barcode:''} — 기존 품목은 등록할 수 있습니다. 신규 품목은 확인 전 저장되지 않습니다.`)].join('\n');
-    $('sum').textContent=`원본 행 판독합: ${result.total}건 · 사진 총합: ${result.sourceTotal===null?'확인 필요':result.sourceTotal+'건'}\n등록할 기존 품목: ${result.registeredTotal??result.total}건 · 신규 SKU 보류: ${(result.pendingRows||[]).reduce((n,r)=>n+r.quantity,0)}건`;
-    $('result').hidden=false;$('result').scrollIntoView({behavior:'smooth',block:'start'});$('status').textContent=result.needsReview?'확인 필요: 자동 재분석 후에도 검산을 통과하지 못했습니다. 등록할 수 없습니다. 더 선명한 사진을 선택하세요.':`검산 완료${result.attempts===2?' (자동 재분석 완료)':''}. 사진의 모든 행과 수량을 비교해 주세요.`;
-  }catch(e){$('status').textContent='숫자를 읽지 못했어요. 잠시 후 다시 눌러 주세요. 계속 안 되면 ‘직접 숫자 입력하기’를 이용해 주세요.'}finally{busy=false;$('photo').disabled=false;state()}
+    $('sum').textContent=`${result.scope.slot}차 판독합: ${result.total}건 · ${result.scope.slot}차 소계: ${result.sourceTotal===null?'확인 필요':result.sourceTotal+'건'}\n하루 총합: ${result.dailyTotal===null?'사진에 없음':result.dailyTotal+'건 (참고)'} · 다른 차수 제외: ${result.excludedRowCount}행\n등록할 기존 품목: ${result.registeredTotal??result.total}건 · 신규 SKU 보류: ${(result.pendingRows||[]).reduce((n,r)=>n+r.quantity,0)}건`;
+    $('result').hidden=false;$('result').scrollIntoView({behavior:'smooth',block:'start'});$('status').textContent=result.needsReview?'확인 필요: 선택 차수의 전체 행과 소계를 확인하지 못했습니다. 차수 머리글부터 마지막 상품까지 모두 보이게 다시 찍어 주세요.':`${result.scope.slot}차 검산 완료${result.attempts===2?' (자동 재분석 완료)':''}. 선택한 차수의 모든 품목과 수량을 비교해 주세요.`;
+  }catch(e){reset();$('status').textContent=e.code==='functions/invalid-argument'?'화면을 새로고침하고 날짜와 차수를 다시 선택해 주세요.':e.code==='functions/resource-exhausted'?'오늘 판독 한도에 도달했습니다. 직접 숫자 입력하기를 이용해 주세요.':'숫자를 읽지 못했어요. 잠시 후 다시 눌러 주세요. 계속 안 되면 ‘직접 숫자 입력하기’를 이용해 주세요.'}finally{busy=false;$('photo').disabled=false;state()}
 };
-['expected','checked','date','slot'].forEach(id=>$(id).addEventListener('change',state));$('expected').addEventListener('input',state);
+['expected','checked'].forEach(id=>$(id).addEventListener('change',state));$('expected').addEventListener('input',state);
+['date','slot'].forEach(id=>$(id).addEventListener('change',()=>{reset();$('status').textContent='날짜 또는 차수가 바뀌었습니다. 사진에서 숫자 읽기를 다시 눌러 주세요.';}));
 $('transfer').onclick=()=>{
   state();if($('transfer').disabled)return;
   if(!/^\d{4}-\d{2}-\d{2}$/.test($('date').value)){$('status').textContent='발주 날짜를 선택하세요.';return}

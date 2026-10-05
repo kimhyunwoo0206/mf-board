@@ -44,4 +44,29 @@ function validateExtraction(value) {
   const rows=Array.from(items,([name,quantity])=>({name,quantity}));
   return {rows,rawRows,pendingRows,total,sourceTotal,warnings,needsReview:false,status:pendingRows.length?'NEW_SKU_REVIEW':'VERIFIED',registeredTotal:rows.reduce((n,r)=>n+r.quantity,0)};
 }
-module.exports={catalog,validateImage,validateExtraction,fieldName};
+function validateScope({date,slot}={}) {
+  if(typeof date!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date+'T00:00:00Z')) || new Date(date+'T00:00:00Z').toISOString().slice(0,10)!==date)throw new Error('발주 날짜를 선택하고 화면을 새로고침하세요.');
+  const slots={'1_slot_8':1,'2_slot_10':2,'3_slot_12':3,'4_slot_13':4};
+  const n=typeof slot==='string'?slots[slot]:slot;
+  if(!Number.isInteger(n)||n<1||n>4)throw new Error('발주 차수를 선택하고 화면을 새로고침하세요.');
+  return {date,slot:n};
+}
+function validateScopedExtraction(value,context) {
+  const scope=validateScope(context);
+  if(!value || !Array.isArray(value.rows) || value.rows.length>300 || !Array.isArray(value.slotTotals) || value.slotTotals.length>8 || !Array.isArray(value.warnings))throw new Error('판독 형식 오류');
+  const warnings=[...value.warnings];
+  const selected=value.rows.filter(r=>r?.slot===scope.slot);
+  const totals=value.slotTotals.filter(r=>r?.slot===scope.slot);
+  let complete=value.targetVisible===true && value.targetComplete===true;
+  if(value.targetVisible!==true)warnings.push(scope.slot+'차 머리글과 상품 행을 확인할 수 없습니다.');
+  if(value.targetComplete!==true)warnings.push(scope.slot+'차의 첫 상품부터 마지막 상품까지 모두 보이게 찍어 주세요.');
+  if(value.detectedDate!==null && value.detectedDate!==scope.date){complete=false;warnings.push('사진 날짜와 선택한 발주 날짜가 다릅니다.');}
+  if(value.rows.some(r=>!Number.isInteger(r?.slot)||r.slot<1||r.slot>4)){complete=false;warnings.push('소속 차수를 확인할 수 없는 상품 행이 있습니다. 차수 머리글이 보이게 찍어 주세요.');}
+  const sourceTotal=totals.length===1 && Number.isSafeInteger(totals[0].quantity) && totals[0].quantity>=0 ? totals[0].quantity:null;
+  if(sourceTotal===null){complete=false;warnings.push(scope.slot+'차 머리글의 소계 숫자를 확인할 수 없습니다. 하루 총합으로 대신 검산하지 않습니다.');}
+  // Earlier/later slots are removed before both summation and catalog matching.
+  const result=validateExtraction({rows:selected,total:sourceTotal,tableComplete:complete,warnings});
+  result.warnings=result.warnings.map(w=>w.replace('사진 하단 총합','선택 차수 소계').replace('사진 총합과','선택 차수 소계와'));
+  return {...result,scope,dailyTotal:Number.isSafeInteger(value.dailyTotal)&&value.dailyTotal>=0?value.dailyTotal:null,excludedRowCount:value.rows.length-selected.length};
+}
+module.exports={catalog,validateImage,validateExtraction,fieldName,validateScope,validateScopedExtraction};
