@@ -87,8 +87,9 @@ $('inspect').onclick=()=>{
 };
 $('preview').onclick=async()=>{
  invalidate();const request={date:$('stock-date').value,time:$('stock-time').value,text:$('raw').value,hasHeader:$('has-header').checked,columns:Object.fromEntries(keys.map(k=>[k,Number($('col-'+k).value)])),expectedTotal:$('expected').value===''?null:Number($('expected').value),requestId:crypto.randomUUID()};
- busy=true;state();
- try{const catalog=await catalogReady;const parsed=MfStockImport.parseStock(request.text,{...request,catalog});if(!parsed.verified)throw Error(parsed.errors.join('\n'));if(!request.date||!request.time)throw Error('재고 기준 날짜와 시간을 선택하세요.');
+ busy=true;state();$('import-status').textContent='현재재고를 집계하고 검산하고 있어요…';
+ try{const catalog=await catalogReady;let parsed=MfStockImport.parseStock(request.text,{...request,catalog});if(!parsed.verified)throw Error(parsed.errors.join('\n'));if(!request.date||!request.time)throw Error('재고 기준 날짜와 시간을 선택하세요.');
+  if(approved()){const response=await write({...request,dryRun:true});parsed=response.data;}
   draft={request,parsed};$('preview-panel').hidden=false;$('preview-summary').textContent=request.date+' '+request.time+' 기준 · '+parsed.itemCount+'품목 / 총 '+parsed.total+'개\n원본 '+parsed.sourceRowCount+'행 합 = SKU별 합 '+parsed.total+'개\n'+parsed.warnings.join('\n');
   renderTable($('preview-table'),parsed.rows);$('import-status').className='status ok';$('import-status').textContent='집계 완료. 아래 품목과 수량을 엑셀과 비교하세요.';
  }catch(e){$('import-status').className='status error';$('import-status').textContent=e.message;}finally{busy=false;state();}
