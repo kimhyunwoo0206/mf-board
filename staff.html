@@ -39,7 +39,12 @@ firebase.initializeApp({apiKey:'AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0',authDom
 const auth=firebase.auth(), fn=firebase.app().functions('asia-southeast1').httpsCallable('extractMfOrder',{timeout:300000});
 const $=id=>document.getElementById(id);
 let image=null, result=null, busy=false, previewUrl=null, selection=0;
-const approved=()=>['youngmooff@gmail.com','withfresh11@gmail.com'].includes(auth.currentUser?.email)&&auth.currentUser.emailVerified;
+// 신규 직원 이메일을 받으면 functions/index.js의 승인 목록에도 함께 추가합니다.
+const ALLOWED_EMAILS = [
+  'youngmooff@gmail.com',
+  'withfresh11@gmail.com'
+];
+const approved=()=>ALLOWED_EMAILS.includes(auth.currentUser?.email)&&auth.currentUser.emailVerified;
 function state(){
   ['camera','photo','takePhoto','choosePhoto'].forEach(id=>$(id).disabled=busy);
   $('analyze').disabled=busy||!image||!approved();
