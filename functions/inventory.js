@@ -1,5 +1,5 @@
 'use strict';
-const {createHash}=require('node:crypto');
+const {createHash,timingSafeEqual}=require('node:crypto');
 const {parseStock}=require('./stock-import');
 const catalog=require('./catalog.json');
 class StockError extends Error {constructor(code,message){super(message);this.code=code;}}
@@ -22,12 +22,28 @@ function publicSnapshot(value){
  return Object.fromEntries(fields.filter(k=>value[k]!==undefined).map(k=>[k,value[k]]));
 }
 function metadata(value){const {id,asOf,savedAt,total,itemCount,pendingCount}=value;return {id,asOf,savedAt,total,itemCount,pendingCount};}
-function makeInventoryService({db,allowedEmails,now=()=>new Date()}){
+function makeInventoryService({db,allowedEmails,registrationCode='',now=()=>new Date()}){
+ async function writerIdentity(request){
+  if(request.auth?.token.email_verified===true&&allowedEmails.includes(request.auth.token.email))return request.auth.uid;
+  const supplied=request.data?.registrationCode;
+  if(typeof supplied!=='string'||supplied.length<8||supplied.length>128||registrationCode.length<8)throw new StockError('permission-denied','재고 등록용 번호를 입력하세요.');
+  const instant=now().getTime(),bucket=Math.floor(instant/900000);
+  const address=request.rawRequest?.ip||'unknown';
+  const limitRef=db.collection('mf_stock_auth_limits').doc(createHash('sha256').update(address).digest('hex')+'_'+bucket);
+  const match=timingSafeEqual(createHash('sha256').update(supplied).digest(),createHash('sha256').update(registrationCode).digest());
+  await db.runTransaction(async tx=>{
+   const snap=await tx.get(limitRef),failures=Number(snap.data()?.failures)||0;
+   if(failures>=5)throw new StockError('resource-exhausted','등록 번호를 여러 번 잘못 입력했습니다. 15분 후 다시 시도하세요.');
+   if(!match)tx.set(limitRef,{failures:failures+1});
+  });
+  if(!match)throw new StockError('permission-denied','재고 등록용 번호가 맞지 않습니다.');
+  return 'stock-registration-code';
+ }
  const collection=db.collection('mf_stock_snapshots');
  const latestRef=db.collection('mf_stock_meta').doc('latest');
  const isNewer=(a,b)=>!b||a.asOf>b.asOf||(a.asOf===b.asOf&&a.savedAt>b.savedAt);
  async function save(request){
-  if(!request.auth||request.auth.token.email_verified!==true||!allowedEmails.includes(request.auth.token.email))throw new StockError('permission-denied','재고 등록은 승인된 Google 계정으로 로그인하세요.');
+  const createdBy=await writerIdentity(request);
   const {id,asOf,hash,parsed}=validateRecord(request.data,now());
   if(request.data.dryRun===true)return {preview:true,...parsed};
   const ref=collection.doc(id);
@@ -35,7 +51,7 @@ function makeInventoryService({db,allowedEmails,now=()=>new Date()}){
   const saved=await db.runTransaction(async tx=>{
    const snap=await tx.get(ref),latest=await tx.get(latestRef),day=await tx.get(dayRef);
    if(snap.exists){const previous=snap.data();if(previous.inputHash!==hash)throw new StockError('already-exists','같은 등록 요청의 내용이 달라졌습니다. 다시 확인하세요.');return previous;}
-   const value={schemaVersion:1,id,date:request.data.date,asOf,savedAt:now().toISOString(),createdBy:request.auth.uid,inputHash:hash,...parsed};
+   const value={schemaVersion:1,id,date:request.data.date,asOf,savedAt:now().toISOString(),createdBy,inputHash:hash,...parsed};
    delete value.errors;delete value.verified;
    tx.create(ref,value);
    if(isNewer(value,latest.data()))tx.set(latestRef,metadata(value));

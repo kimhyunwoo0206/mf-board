@@ -8,6 +8,7 @@ const {validateImage,validateScope}=require('./validation');
 const {extractOrder}=require('./extraction');
 initializeApp({databaseURL:'https://coupang-mf-default-rtdb.asia-southeast1.firebasedatabase.app'});
 const apiKey=defineSecret('OPENAI_API_KEY');
+const stockRegistrationCode=defineSecret('MF_STOCK_REGISTRATION_CODE');
 // 신규 직원 이메일을 받으면 이 목록과 staff.html의 승인 목록에 함께 추가합니다.
 const ALLOWED_EMAILS = [
   'youngmooff@gmail.com',
@@ -29,11 +30,11 @@ exports.extractMfOrder=onCall({region:'asia-southeast1',secrets:[apiKey],memory:
 });
 
 const stockOptions={region:'asia-southeast1',memory:'256MiB',cpu:1,minInstances:0,maxInstances:2,concurrency:10,timeoutSeconds:60,cors:['https://kimhyunwoo0206.github.io']};
-function stockService(){return makeInventoryService({db:getFirestore(),allowedEmails:ALLOWED_EMAILS});}
+function stockService(registrationCode=''){return makeInventoryService({db:getFirestore(),allowedEmails:ALLOWED_EMAILS,registrationCode});}
 async function runStock(action){
   try{return await action();}
   catch(e){if(e instanceof StockError)throw new HttpsError(e.code,e.message);throw new HttpsError('unavailable','재고를 처리하지 못했습니다. 잠시 후 다시 시도하세요.');}
 }
-exports.saveMfStock=onCall(stockOptions,request=>runStock(()=>stockService().save(request)));
+exports.saveMfStock=onCall({...stockOptions,secrets:[stockRegistrationCode]},request=>runStock(()=>stockService(stockRegistrationCode.value()).save(request)));
 // Link holders may view stock; only approved accounts may create immutable snapshots.
 exports.getMfStock=onCall(stockOptions,request=>runStock(()=>stockService().get(request.data||{})));

@@ -43,3 +43,15 @@ firebase deploy --project coupang-mf --only functions:mf-ai
 새 stock.html, functions/stock-import.js와 보완 catalog.json은 GitHub Pages로 게시됩니다.
 
 시험은 헤더 없는 9/10열, 현재재고/할당 구분, 로케이션 합산, 인벤토리 지수 표기, 식별자 충돌, 0/빈칸, 중복, 시간별 보존, 최신 포인터, 권한 거부, 재시도와 고정 링크를 포함합니다. 서버 dryRun:true는 실제 저장 없이 검산을 시험하는 용도입니다. 샘플 재고는 실제 운영 기록으로 저장하지 않습니다.
+
+
+## Google 로그인 없이 재고 등록
+
+쿠팡 노트북에서 Google 로그인 제한이 있으면 재고 등록용 번호를 사용합니다.
+번호는 공개 코드·브라우저 저장소·등록 재고 데이터에 보관하지 않습니다. Firebase Secret Manager에서 MF_STOCK_REGISTRATION_CODE로 설정합니다. 8~128자를 사용하세요.
+
+1. 프로젝트 루트에서 firebase functions:secrets:set MF_STOCK_REGISTRATION_CODE --project coupang-mf 실행 후 소유자가 번호를 직접 입력합니다.
+2. firebase deploy --project coupang-mf --only functions:mf-ai:saveMfStock 로 배포합니다.
+3. stock.html에서 번호 입력 → 엑셀 붙여넣기 → 열 확인 → 집계 → 날짜·수량 확인 체크 → 현재고 기록 등록을 누릅니다.
+
+승인된 Google 계정도 기존대로 사용할 수 있습니다. 번호를 아는 사람은 재고 등록이 가능하므로 직원에게만 전달하세요. 번호 오류는 접속 IP별 15분 구간에서 5회까지 허용됩니다. 읽기 권한과 Firestore 클라이언트 차단 규칙은 유지합니다. 사진 OCR·발주 등록 권한은 바뀌지 않습니다.

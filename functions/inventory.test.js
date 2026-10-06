@@ -52,3 +52,20 @@ test('hidden I column pasted as empty still maps final J quantity correctly',()=
  const info=inspect(t);assert.equal(info.mapping.quantity,9);assert.equal(parseStock(t,{catalog,hasHeader:false,columns:info.mapping}).total,19);
 });
 
+
+test('registration code permits signed-out preview and immutable save without publishing code',async()=>{
+ const db=fakeFirestore(),service=makeInventoryService({db,allowedEmails:[],registrationCode:'test-only-code-1234',now:()=>new Date('2026-10-05T01:00:00Z')});
+ const data={...payload,registrationCode:'test-only-code-1234'};
+ assert.equal((await service.save({data:{...data,dryRun:true}})).total,30);
+ assert.equal(db.map.size,0);
+ const result=await service.save({data});
+ assert.equal(result.snapshot.total,30);
+ assert.equal(JSON.stringify([...db.map.values()]).includes('test-only-code-1234'),false);
+ assert.equal(result.snapshot.createdBy,undefined);
+});
+test('wrong registration codes are denied and throttled after five failures',async()=>{
+ const db=fakeFirestore(),service=makeInventoryService({db,allowedEmails:[],registrationCode:'test-only-code-1234',now:()=>new Date('2026-10-05T01:00:00Z')});
+ for(let i=0;i<5;i++)await assert.rejects(()=>service.save({data:{...payload,registrationCode:'wrong-code-1234'}}),e=>e.code==='permission-denied');
+ await assert.rejects(()=>service.save({data:{...payload,registrationCode:'wrong-code-1234'}}),e=>e.code==='resource-exhausted');
+ assert.equal([...db.map.keys()].some(k=>k.startsWith('mf_stock_snapshots/')),false);
+});
