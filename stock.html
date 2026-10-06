@@ -5,13 +5,14 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-functions-compat.js"></script>
 <script src="functions/stock-import.js?v=20261006"></script>
+<script src="stock-workbook.js?v=20261006"></script>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f3f6f9;color:#17212b;font:16px system-ui,'Malgun Gothic',sans-serif}main{max-width:1000px;margin:auto;padding:20px}header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{font-size:28px;margin:0}h2{font-size:21px}nav{display:flex;gap:14px}a{color:#175caa}section,details.panel{background:white;border:1px solid #d5dce3;border-radius:12px;padding:20px;margin:16px 0}summary{cursor:pointer;font-weight:800;font-size:19px}label{display:block;font-weight:700;margin:14px 0 6px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}input,select,textarea,button{font:inherit}input:not([type=checkbox]),select,textarea{width:100%;padding:11px;border:1px solid #aeb9c3;border-radius:7px}textarea{min-height:170px}button{border:0;border-radius:8px;padding:12px 18px;min-height:44px;background:#175caa;color:white;font-weight:750;cursor:pointer;margin:8px 4px 8px 0}button:disabled{background:#87939d;cursor:not-allowed}.secondary{background:#5b6570}.hint{font-size:14px;color:#526272;line-height:1.6}.status{white-space:pre-wrap;line-height:1.6}.error{color:#a52222}.ok{color:#166534}.metrics{display:flex;gap:24px;flex-wrap:wrap;padding:15px;background:#eef5ff;border-radius:9px}.metrics strong{font-size:26px;color:#123f6d}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}td,th{padding:12px 8px;text-align:left;border-bottom:1px solid #dce3e9}th{background:#173e63;color:white}td:nth-child(2){font-weight:800;font-size:20px;text-align:right;white-space:nowrap}th:nth-child(2){text-align:right}.identifiers{font-size:12px;color:#526272;display:block;margin-top:4px}.pending{color:#9a6700}.check{font-weight:400;line-height:1.6;background:#eef5ff;padding:14px;border-radius:8px}input[type=checkbox]{width:20px;height:20px;vertical-align:middle}[hidden]{display:none!important}@media(max-width:600px){main{padding:12px}.row{grid-template-columns:1fr}section,details.panel{padding:15px}td,th{padding:10px 5px;font-size:14px}.identifiers{overflow-wrap:anywhere}}
 @media print{body{background:white}header nav,#import-panel,.view-controls{display:none}main{max-width:none}section{border:0}th{background:#ddd;color:black}}
 </style></head><body><main>
 <header><h1>MF 현재고</h1><nav><a href="index.html">작업지시서</a><a href="#import-panel" id="open-import">재고 등록</a></nav></header>
 <section>
-<div class="view-controls"><button id="latest">최신 재고</button><button id="refresh" class="secondary">새로고침</button><button id="share" class="secondary">이 기록 링크 복사</button>
+<div class="view-controls"><button id="latest">최신 재고</button><button id="refresh" class="secondary">새로고침</button><button id="share" class="secondary">이 기록 링크 복사</button><button id="download" class="secondary" disabled>엑셀 다운로드</button>
 <div class="row"><div><label for="view-date">조회 날짜</label><input id="view-date" type="date"></div><div><label for="history">등록 시간 / 기록</label><select id="history"><option value="">기록 확인 중…</option></select></div></div></div>
 <h2 id="asof">재고를 확인하고 있어요…</h2><p id="view-status" class="status" role="status"></p>
 <div id="metrics" class="metrics" hidden><span>품목 <strong id="item-count"></strong></span><span>총 재고 <strong id="stock-total"></strong>개</span><span>확인 필요 <strong id="pending-count"></strong>품목</span></div>
@@ -51,11 +52,13 @@ $('stock-date').value=kstNow().slice(0,10);$('stock-time').value=kstNow().slice(
 let draft=null,busy=false,loadTicket=0,current=null,currentDate='',currentId='',viewSelection={};
 function state(){ $('save').disabled=busy||!draft||!canRegister()||!$('confirmed').checked;document.querySelectorAll('#import-panel input,#import-panel select,#import-panel textarea,#inspect,#preview').forEach(el=>el.disabled=busy);$('login').disabled=busy;$('logout').disabled=busy; }
 function invalidate(){draft=null;$('preview-panel').hidden=true;$('confirmed').checked=false;state();}
-async function renderTable(target,rows){
- const catalog=await catalogReady;
+function completeRows(rows,catalog){
  const present=new Set();
  const display=catalog.map(item=>{const row=rows.find(r=>r.barcode===item.barcode||(item.productId&&r.productId===item.productId)||r.name===item.name);if(row){present.add(row);return row;}return {...item,quantity:0,sourceRowCount:0,status:'재고 0'};});
- display.push(...rows.filter(r=>!present.has(r)));
+ display.push(...rows.filter(r=>!present.has(r)));return display;
+}
+async function renderTable(target,rows){
+ const display=completeRows(rows,await catalogReady);
  target.replaceChildren();const table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr');
  ['현장명','현재재고','확인 상태'].forEach(s=>{const th=document.createElement('th');th.textContent=s;tr.append(th)});head.append(tr);table.append(head);const body=document.createElement('tbody');
  display.forEach(r=>{const line=document.createElement('tr'),name=document.createElement('td'),qty=document.createElement('td'),status=document.createElement('td');name.textContent=r.name;
@@ -65,7 +68,7 @@ async function renderTable(target,rows){
 }
 function setLink(){const url=new URL(location.href);url.search='';if(current){url.searchParams.set('date',current.date);url.searchParams.set('id',current.id);}history.replaceState(null,'',url);}
 async function load(options={}){
- const ticket=++loadTicket;$('view-status').textContent='재고를 불러오고 있어요…';$('share').disabled=true;
+ const ticket=++loadTicket;$('view-status').textContent='재고를 불러오고 있어요…';$('share').disabled=true;$('download').disabled=true;
  try{
   const response=await read(options);if(ticket!==loadTicket)return;viewSelection={...options};const data=response.data;current=data.snapshot;currentDate=data.date;currentId=current?.id||'';$('view-date').value=data.date;$('history').replaceChildren();
   for(const h of data.history){const opt=document.createElement('option');opt.value=h.id;opt.textContent=h.asOf.slice(11)+' 기준 · '+h.itemCount+'품목 / '+h.total.toLocaleString('ko-KR')+'개 · 등록 '+new Date(h.savedAt).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour12:false});$('history').append(opt);}
@@ -75,7 +78,7 @@ async function load(options={}){
   if(current){
    $('asof').textContent=current.asOf.replace('T',' ')+' 기준 재고';$('item-count').textContent=current.itemCount;$('stock-total').textContent=current.total.toLocaleString('ko-KR');$('pending-count').textContent=current.pendingCount;
    $('recorded').textContent='등록 시각: '+new Date(current.savedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});await renderTable($('stock-table'),current.rows);$('view-warnings').textContent=(current.warnings||[]).join('\n');
-   $('view-status').textContent=current.id===data.latestId?'가장 최신 등록 재고입니다.':'지난 재고 기록을 보고 있습니다.';$('share').disabled=false;
+   $('view-status').textContent=current.id===data.latestId?'가장 최신 등록 재고입니다.':'지난 재고 기록을 보고 있습니다.';$('share').disabled=false;$('download').disabled=false;
   }else{$('asof').textContent=data.date+' 재고';$('view-status').textContent='아직 등록된 재고가 없습니다. 재고 등록에서 엑셀 내용을 붙여넣으세요.';}
   setLink();
  }catch(e){if(ticket===loadTicket)$('view-status').textContent='재고를 불러오지 못했습니다. 잠시 후 새로고침을 눌러 주세요.';}
@@ -86,6 +89,10 @@ $('logout').onclick=()=>auth.signOut();$('open-import').onclick=()=>$('import-pa
 $('latest').onclick=()=>load();$('refresh').onclick=()=>load(viewSelection);
 $('view-date').onchange=()=>load({date:$('view-date').value});$('history').onchange=()=>load({date:$('view-date').value,id:$('history').value});
 $('share').onclick=async()=>{if(!current)return;try{await navigator.clipboard.writeText(location.href);$('view-status').textContent='이 날짜·시간의 재고 링크를 복사했습니다.'}catch(e){$('view-status').textContent='주소창의 링크를 복사해 공유하세요.'}};
+$('download').onclick=async()=>{
+ const snapshot=current;if(!snapshot)return;
+ try{const rows=completeRows(snapshot.rows,await catalogReady),bytes=MfStockWorkbook.create(snapshot,rows),url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const link=document.createElement('a');link.href=url;link.download='MF_현재고_'+snapshot.asOf.replace('T','_').replace(':','-')+'.xlsx';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);$('view-status').textContent='조회 중인 기준 날짜·시간의 재고 엑셀을 다운로드했습니다.';}catch(e){$('view-status').textContent=e.message||'엑셀 다운로드를 완료하지 못했습니다.';}
+};
 $('raw').addEventListener('input',()=>{invalidate();$('mapping-panel').hidden=true;$('import-status').textContent='붙여넣은 열 확인을 눌러 주세요.';});
 ['stock-date','stock-time','expected','has-header','confirmed',...keys.map(k=>'col-'+k)].forEach(id=>$(id).addEventListener('change',id==='confirmed'?state:invalidate));
 $('expected').addEventListener('input',invalidate);
