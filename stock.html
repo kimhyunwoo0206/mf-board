@@ -15,7 +15,7 @@
 <div class="row"><div><label for="view-date">조회 날짜</label><input id="view-date" type="date"></div><div><label for="history">등록 시간 / 기록</label><select id="history"><option value="">기록 확인 중…</option></select></div></div></div>
 <h2 id="asof">재고를 확인하고 있어요…</h2><p id="view-status" class="status" role="status"></p>
 <div id="metrics" class="metrics" hidden><span>품목 <strong id="item-count"></strong></span><span>총 재고 <strong id="stock-total"></strong>개</span><span>확인 필요 <strong id="pending-count"></strong>품목</span></div>
-<p id="recorded" class="hint"></p><p class="hint">등록된 기준 시점의 재고입니다. 이후 입출고는 자동 차감하지 않습니다.</p>
+<p id="recorded" class="hint"></p><p class="hint">기준 27품목을 모두 표시합니다. 수량 0은 0으로, 엑셀에 없는 품목은 —(확인 필요)로 표시합니다. 등록된 기준 시점의 재고이며 이후 입출고는 자동 차감하지 않습니다.</p>
 <div id="stock-table" class="table-wrap"></div><p id="view-warnings" class="status hint"></p>
 </section>
 <details class="panel" id="import-panel"><summary>재고 등록 · 엑셀 복사해서 붙여넣기</summary>
@@ -51,12 +51,16 @@ $('stock-date').value=kstNow().slice(0,10);$('stock-time').value=kstNow().slice(
 let draft=null,busy=false,loadTicket=0,current=null,currentDate='',currentId='',viewSelection={};
 function state(){ $('save').disabled=busy||!draft||!canRegister()||!$('confirmed').checked;document.querySelectorAll('#import-panel input,#import-panel select,#import-panel textarea,#inspect,#preview').forEach(el=>el.disabled=busy);$('login').disabled=busy;$('logout').disabled=busy; }
 function invalidate(){draft=null;$('preview-panel').hidden=true;$('confirmed').checked=false;state();}
-function renderTable(target,rows){
+async function renderTable(target,rows){
+ const catalog=await catalogReady;
+ const present=new Set();
+ const display=catalog.map(item=>{const row=rows.find(r=>r.barcode===item.barcode||(item.productId&&r.productId===item.productId)||r.name===item.name);if(row){present.add(row);return row;}return {...item,quantity:null,sourceRowCount:0,status:'원본에 없음 · 확인 필요'};});
+ display.push(...rows.filter(r=>!present.has(r)));
  target.replaceChildren();const table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr');
  ['현장명','현재재고','확인 상태'].forEach(s=>{const th=document.createElement('th');th.textContent=s;tr.append(th)});head.append(tr);table.append(head);const body=document.createElement('tbody');
- rows.forEach(r=>{const line=document.createElement('tr'),name=document.createElement('td'),qty=document.createElement('td'),status=document.createElement('td');name.textContent=r.name;
-  const ids=document.createElement('span');ids.className='identifiers';ids.textContent=[r.barcode?'바코드 '+r.barcode:'',r.productId?'외부 SKU '+r.productId:'',r.sourceRowCount+'행 합산'].filter(Boolean).join(' · ');name.append(ids);
-  qty.textContent=r.quantity.toLocaleString('ko-KR');status.textContent=r.status;status.className=r.status==='확인 완료'?'':'pending';line.append(name,qty,status);body.append(line);
+ display.forEach(r=>{const line=document.createElement('tr'),name=document.createElement('td'),qty=document.createElement('td'),status=document.createElement('td');name.textContent=r.name;
+  const ids=document.createElement('span');ids.className='identifiers';ids.textContent=[r.barcode?'바코드 '+r.barcode:'',r.productId?'외부 SKU '+r.productId:'',r.sourceRowCount?r.sourceRowCount+'행 합산':'엑셀에 해당 품목 행 없음'].filter(Boolean).join(' · ');name.append(ids);
+  qty.textContent=r.quantity===null?'—':r.quantity.toLocaleString('ko-KR');status.textContent=r.status;status.className=r.status==='확인 완료'?'':'pending';line.append(name,qty,status);body.append(line);
  });table.append(body);target.append(table);
 }
 function setLink(){const url=new URL(location.href);url.search='';if(current){url.searchParams.set('date',current.date);url.searchParams.set('id',current.id);}history.replaceState(null,'',url);}
@@ -70,7 +74,7 @@ async function load(options={}){
   $('metrics').hidden=!current;$('stock-table').replaceChildren();$('recorded').textContent='';$('view-warnings').textContent='';
   if(current){
    $('asof').textContent=current.asOf.replace('T',' ')+' 기준 재고';$('item-count').textContent=current.itemCount;$('stock-total').textContent=current.total.toLocaleString('ko-KR');$('pending-count').textContent=current.pendingCount;
-   $('recorded').textContent='등록 시각: '+new Date(current.savedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});renderTable($('stock-table'),current.rows);$('view-warnings').textContent=(current.warnings||[]).join('\n');
+   $('recorded').textContent='등록 시각: '+new Date(current.savedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});await renderTable($('stock-table'),current.rows);$('view-warnings').textContent=(current.warnings||[]).join('\n');
    $('view-status').textContent=current.id===data.latestId?'가장 최신 등록 재고입니다.':'지난 재고 기록을 보고 있습니다.';$('share').disabled=false;
   }else{$('asof').textContent=data.date+' 재고';$('view-status').textContent='아직 등록된 재고가 없습니다. 재고 등록에서 엑셀 내용을 붙여넣으세요.';}
   setLink();
@@ -95,7 +99,7 @@ $('preview').onclick=async()=>{
  try{const catalog=await catalogReady;let parsed=MfStockImport.parseStock(request.text,{...request,catalog});if(!parsed.verified)throw Error(parsed.errors.join('\n'));if(!request.date||!request.time)throw Error('재고 기준 날짜와 시간을 선택하세요.');
   if(canRegister()){const response=await write(withCode({...request,dryRun:true}));parsed=response.data;}
   draft={request,parsed};$('preview-panel').hidden=false;$('preview-summary').textContent=request.date+' '+request.time+' 기준 · '+parsed.itemCount+'품목 / 총 '+parsed.total+'개\n원본 '+parsed.sourceRowCount+'행 합 = SKU별 합 '+parsed.total+'개\n'+parsed.warnings.join('\n');
-  renderTable($('preview-table'),parsed.rows);$('import-status').className='status ok';$('import-status').textContent=canRegister()?'집계 완료. 아래 품목과 수량을 엑셀과 비교하고 확인 칸을 체크하세요.':'집계 완료. 저장하려면 위의 재고 등록용 번호를 입력하고 아래 확인 칸을 체크하세요.';
+  await renderTable($('preview-table'),parsed.rows);$('import-status').className='status ok';$('import-status').textContent=canRegister()?'집계 완료. 아래 품목과 수량을 엑셀과 비교하고 확인 칸을 체크하세요.':'집계 완료. 저장하려면 위의 재고 등록용 번호를 입력하고 아래 확인 칸을 체크하세요.';
  }catch(e){$('import-status').className='status error';$('import-status').textContent=e.message;}finally{busy=false;state();}
 };
 $('save').onclick=async()=>{
