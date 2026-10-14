@@ -48,8 +48,10 @@ const catalog=[
 {group:'새우',items:['활새우 800g','활새우 1.2kg']},
 {group:'대합',items:['생물 대합 600g 1개','생물 대합 1kg 1개']},
 {group:'뿔소라',items:['생물 뿔소라 600g','생물 뿔소라 1kg']},
-{group:'돌멍게',items:['생물 돌멍게 400g','생물 돌멍게 1kg']}
+{group:'돌멍게',items:['생물 돌멍게 400g','생물 돌멍게 1kg']},
+{group:'통영생굴',items:['[로켓프레시] 위드프레쉬 산지직송 통영 생굴 800g','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 1kg']}
 ];
+const displayNames={'[로켓프레시] 위드프레쉬 산지직송 통영 생굴 800g':'통영생굴 800g','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 1kg':'통영생굴 1kg'};
 function showDate(){
  if(activeRef)activeRef.off();const selectedDate=dateInput.value;if(!validDate(selectedDate))return;document.getElementById('today-date').innerText=`${selectedDate} MF 현장 작업지시서`;document.querySelector('.admin-button').href=`admin.html?date=${encodeURIComponent(selectedDate)}`;activeRef=db.ref('mf_orders/'+selectedDate);
  activeRef.on('value',snapshot=>{
@@ -61,7 +63,7 @@ function showDate(){
    const known=new Set(catalog.flatMap(g=>g.items));const groups=catalog.map(g=>({group:g.group,items:g.items.filter(name=>Object.prototype.hasOwnProperty.call(byItem,name))})).filter(g=>g.items.length);const unknown=Object.keys(byItem).filter(name=>!known.has(name)).sort((a,b)=>a.localeCompare(b,'ko'));if(unknown.length)groups.push({group:'기타',items:unknown});
    if(!groups.length)workOrderEl.innerHTML='<div class="empty">표시할 품목이 없습니다.</div>';else{
     let html='<div class="work-table-wrap"><table class="work-table"><thead><tr><th><span class="desktop-label">품목군</span><span class="mobile-label">군</span></th><th><span class="desktop-label">상품명</span><span class="mobile-label">품목</span></th>'+slotOrder.map(k=>`<th>${slotHeadings[k]}</th>`).join('')+'<th>누적</th></tr></thead><tbody>';
-    groups.forEach(group=>group.items.forEach((name,index)=>{const values=slotOrder.map(k=>Number(byItem[name]?.[k])||0),total=values.reduce((s,v)=>s+v,0);html+=`<tr class="${index===0?'group-start':''}">`;if(index===0)html+=`<th class="group" rowspan="${group.items.length}">${escapeHtml(group.group)}</th>`;html+=`<td class="product">${escapeHtml(name)}</td>`+values.map(v=>`<td class="slot ${v===0?'zero':v<0?'cancel':''}">${v===0?'—':v}</td>`).join('')+`<td class="total ${total<0?'cancel':''}">${total}</td></tr>`}));html+='</tbody></table></div>';workOrderEl.innerHTML=html;
+    groups.forEach(group=>group.items.forEach((name,index)=>{const values=slotOrder.map(k=>Number(byItem[name]?.[k])||0),total=values.reduce((s,v)=>s+v,0);html+=`<tr class="${index===0?'group-start':''}">`;if(index===0)html+=`<th class="group" rowspan="${group.items.length}">${escapeHtml(group.group)}</th>`;html+=`<td class="product">${escapeHtml(displayNames[name]||name)}</td>`+values.map(v=>`<td class="slot ${v===0?'zero':v<0?'cancel':''}">${v===0?'—':v}</td>`).join('')+`<td class="total ${total<0?'cancel':''}">${total}</td></tr>`}));html+='</tbody></table></div>';workOrderEl.innerHTML=html;
    }
    grandTotalEl.textContent=String(grandTotalCount);if(latestUpdate)updatedEl.textContent='마지막 반영: '+new Date(latestUpdate).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
   }else{statusBanner.innerText='아직 등록된 발주가 없습니다.';statusBanner.classList.remove('closed')}
