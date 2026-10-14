@@ -54,7 +54,7 @@
 
   <section>
     <h2>2. 엑셀 피벗 붙여넣기</h2>
-    <p class="hint">쿠팡 노트북의 엑셀에서 <b>상품명(A열)과 수량(B열)</b>을 함께 선택해 Ctrl+C → 아래 칸에 Ctrl+V 하세요. 선택한 차수의 머리글·소계와 모든 상품 행을 포함하세요. 전체 피벗을 복사해도 위에서 선택한 차수만 가져옵니다.</p>
+    <p class="hint">쿠팡 노트북의 엑셀에서 <b>상품명(A열)과 수량(B열)</b>을 함께 선택해 Ctrl+C → 아래 칸에 Ctrl+V 하세요. 선택한 차수의 머리글·소계와 모든 상품 행을 포함하세요. 전체 피벗을 복사해도 위에서 선택한 차수만 가져옵니다. <b>1차는 1-1·1-2 두 묶음을 합산</b>해 1차로 등록하며, 한 묶음만 붙여넣으면 나머지 묶음은 기존 저장분을 유지합니다.</p>
     <textarea id="pivot" placeholder="엑셀에서 복사한 내용을 여기에 붙여넣으세요"></textarea>
     <label for="pivot-total">차수 소계 (머리글을 복사하지 않은 경우 직접 입력)</label>
     <input id="pivot-total" type="number" min="0" step="1" style="width:100%;padding:11px">
@@ -95,7 +95,7 @@ const labels={
 };
 const slotAliases={"1":"1_slot_8","2":"2_slot_10","3":"3_slot_12","4":"4_slot_13"};
 const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-let existing=null,busy=false,autoStarted=false,alreadyApplied=false,pendingRows=[],pivotImported=false;
+let existing=null,busy=false,autoStarted=false,alreadyApplied=false,pendingRows=[],pivotImported=false,importedParts=null;
 const catalogReady=fetch("./functions/catalog.json",{cache:"no-cache"}).then(r=>{if(!r.ok)throw new Error("catalog");return r.json()}).catch(()=>null);
 const params=new URLSearchParams(location.search);
 
@@ -172,7 +172,8 @@ async function loadExisting(){
       const raw=decodeStoredItems(existing.items);
       const entries=Object.entries(raw);
       const total=entries.reduce((s,[,v])=>s+(Number(v)||0),0);
-      $("existing").textContent=`현재 저장: ${entries.length}품목 / 순 ${total}건`;
+      const parts=Object.entries(existing.parts||{}).sort().map(([part,stored])=>`${part} ${Object.values(decodeStoredItems(stored)).reduce((s,v)=>s+v,0)}건`);
+      $("existing").textContent=`현재 저장: ${entries.length}품목 / 순 ${total}건`+(parts.length?` (${parts.join(" · ")})`:"");
     }else $("existing").textContent="이 차수에 저장된 입력이 없습니다.";
   }catch(e){$("existing").textContent="기존 입력 조회 실패: "+e.message}
 }
@@ -201,13 +202,21 @@ async function saveData(isAuto=false){
       day.slots=day.slots||{};
       day.appliedRequests=day.appliedRequests||{};
       if(requestId&&day.appliedRequests[requestId]){alreadyApplied=true;return day}
-      let rawToSave=items;
-      if(mode==="merge"){
+      let rawToSave=items,partsToSave=null;
+      let pending=mode==='merge'?[...(day.slots[slot]?.pendingSkuRows||[]),...pendingRows]:pendingRows;
+      if(importedParts){
+        // 1-1·1-2는 따로 보관하고 합계를 1차로 저장합니다. 이번에 붙여넣지 않은 묶음은 기존 저장분을 유지합니다.
+        partsToSave={...(day.slots[slot]?.parts||{})};
+        for(const [part,partItems] of Object.entries(importedParts))partsToSave[part]=encodeItems(partItems);
+        rawToSave={};
+        for(const stored of Object.values(partsToSave))rawToSave=mergeRawItems(rawToSave,decodeStoredItems(stored));
+        pending=[...(day.slots[slot]?.pendingSkuRows||[]).filter(r=>r.part&&!importedParts[r.part]),...pendingRows];
+      }else if(mode==="merge"){
         const previous=decodeStoredItems(day.slots[slot]?.items||{});
         rawToSave=mergeRawItems(previous,items);
       }
-      const pending=mode==='merge'?[...(day.slots[slot]?.pendingSkuRows||[]),...pendingRows]:pendingRows;
       day.slots[slot]={label:labels[slot],items:encodeItems(rawToSave),updatedAt:savedAt};
+      if(partsToSave)day.slots[slot].parts=partsToSave;
       if(pending.length)day.slots[slot].pendingSkuRows=pending;
       if(requestId) day.appliedRequests[requestId]=savedAt;
       const latestSlot=Object.keys(day.slots).filter(k=>labels[k]).sort().at(-1);
@@ -220,7 +229,7 @@ async function saveData(isAuto=false){
     }else{
       const count=Object.keys(items).length;
       const total=Object.values(items).reduce((s,v)=>s+v,0);
-      $("save-status").textContent=`저장 완료: ${count}품목 / 순 ${total}건`;
+      $("save-status").textContent=`저장 완료: ${count}품목 / 순 ${total}건`+(importedParts?` (${Object.keys(importedParts).join("·")}) — 1차 누적은 위 현재 저장 수량을 확인하세요.`:"");
       $("save-status").className="status ok";
     }
     await loadExisting();
@@ -272,7 +281,7 @@ function applyQuery(){
   return auto&&!!text;
 }
 function invalidatePivot(){
-  if(pivotImported){$("raw").value="";pendingRows=[];pivotImported=false;updateSummary();$("pivot-status").textContent="붙여넣은 내용·날짜 또는 차수가 바뀌었습니다. 선택한 차수 가져오기를 다시 눌러 주세요.";}
+  if(pivotImported){$("raw").value="";pendingRows=[];pivotImported=false;importedParts=null;updateSummary();$("pivot-status").textContent="붙여넣은 내용·날짜 또는 차수가 바뀌었습니다. 선택한 차수 가져오기를 다시 눌러 주세요.";}
 }
 $("convert").addEventListener("click",async()=>{
   if(busy)return;
@@ -289,18 +298,20 @@ $("convert").addEventListener("click",async()=>{
     if(manual!=="" && imported.sourceTotal!==null && expected!==imported.sourceTotal)throw new Error("직접 입력한 소계와 엑셀 머리글 소계가 다릅니다.");
     $("raw").value=Object.entries(imported.items).map(([name,qty])=>name+" : "+qty+"건").join("\n");
     pendingRows=imported.pendingRows;pivotImported=true;
+    importedParts=imported.parts?Object.fromEntries(Object.entries(imported.parts).map(([part,p])=>[part,p.items])):null;
     $("mode").value="replace";params.delete("rid");params.delete("commit");
     updateSummary();
+    const partInfo=imported.parts?"\n"+Object.entries(imported.parts).map(([part,p])=>part+" "+p.total+"건").join(" + ")+" → 1차로 합산"+(Object.keys(imported.parts).length<2?" (붙여넣지 않은 묶음은 기존 저장분 유지)":""):"";
     $("pivot-status").className="status ok";
-    $("pivot-status").textContent=labels[slot]+" 검산 완료: "+imported.selectedRowCount+"행 / "+imported.total+"건 · 다른 차수 제외 "+imported.excludedRowCount+"행"+(imported.dailyTotal===null?"":"\n하루 총합 "+imported.dailyTotal+"건 (참고)")+(pendingRows.length?"\n신규 SKU 확인 필요: "+pendingRows.map(r=>r.fieldName+" "+r.quantity+"건").join(", ")+" — 기존 품목만 등록하며 신규 행은 보류합니다.":"")+"\n아래 품목과 숫자를 확인한 뒤 저장을 누르세요.";
-  }catch(e){$("raw").value="";pendingRows=[];pivotImported=false;updateSummary();$("pivot-status").className="status error";$("pivot-status").textContent=e.message;}
+    $("pivot-status").textContent=labels[slot]+" 검산 완료: "+imported.selectedRowCount+"행 / "+imported.total+"건 · 다른 차수 제외 "+imported.excludedRowCount+"행"+partInfo+(imported.dailyTotal===null?"":"\n하루 총합 "+imported.dailyTotal+"건 (참고)")+(pendingRows.length?"\n신규 SKU 확인 필요: "+pendingRows.map(r=>r.fieldName+" "+r.quantity+"건").join(", ")+" — 기존 품목만 등록하며 신규 행은 보류합니다.":"")+"\n아래 품목과 숫자를 확인한 뒤 저장을 누르세요.";
+  }catch(e){$("raw").value="";pendingRows=[];pivotImported=false;importedParts=null;updateSummary();$("pivot-status").className="status error";$("pivot-status").textContent=e.message;}
   finally{$("convert").disabled=false;}
 });
 $("pivot").addEventListener("input",invalidatePivot);
 $("pivot-total").addEventListener("input",invalidatePivot);
 $("date").addEventListener("change",invalidatePivot);
 $("slot").addEventListener("change",invalidatePivot);
-$("raw").addEventListener("input",()=>{if(pivotImported){pendingRows=[];pivotImported=false;$("pivot-status").textContent="저장할 목록을 직접 수정했습니다. 원본 소계와 다시 비교해 주세요.";}updateSummary();});
+$("raw").addEventListener("input",()=>{if(pivotImported){pendingRows=[];pivotImported=false;importedParts=null;$("pivot-status").textContent="저장할 목록을 직접 수정했습니다. 원본 소계와 다시 비교해 주세요.";}updateSummary();});
 $("date").addEventListener("change",loadExisting);
 $("slot").addEventListener("change",loadExisting);
 $("save").addEventListener("click",()=>saveData(false));
