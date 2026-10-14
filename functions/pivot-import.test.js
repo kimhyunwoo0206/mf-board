@@ -55,3 +55,41 @@ test('actual admin requires a correct manual subtotal for product-only paste',as
  h.el('pivot-total').value='115';await h.el('convert').events.click();assert.equal(h.el('raw').value,'');
  h.el('pivot-total').value='20';await h.el('convert').events.click();assert.ok(h.el('raw').value.includes('12건'));assert.equal(h.writes(),0);
 });
+
+// 1차는 1-1·1-2 두 묶음으로 나뉘어 들어옵니다.
+const split='행 레이블\t합계 : 건수\r\n261005\t115\r\n1-1\t73\r\n'+lines(first.slice(0,6))+'\r\n1-2\t22\r\n'+lines(first.slice(6))+'\r\n2\t20\r\n'+lines(second)+'\r\n총합계\t115';
+test('1-1 and 1-2 are combined into slot 1 with per-part checks',()=>{
+ const r=parse(split,'1_slot_8');assert.deepEqual(r.errors,[]);assert.equal(r.total,95);assert.equal(r.sourceTotal,95);
+ assert.equal(r.items['손질오징어(통) 500g'],59);assert.equal(Object.keys(r.items).length,12);
+ assert.deepEqual(Object.keys(r.parts),['1-1','1-2']);assert.equal(r.parts['1-1'].total,73);assert.equal(r.parts['1-2'].total,22);
+ assert.equal(r.excludedRowCount,5);
+});
+test('slot 2 import ignores 1-1 and 1-2 rows',()=>{
+ const r=parse(split,'2_slot_10');assert.deepEqual(r.errors,[]);assert.equal(r.total,20);assert.equal(r.parts,null);
+});
+test('one part pasted alone, header variants and nested 1 header are accepted',()=>{
+ const only='1-2\t22\n'+lines(first.slice(6));const r=parse(only,'1_slot_8');assert.deepEqual(r.errors,[]);assert.deepEqual(Object.keys(r.parts),['1-2']);assert.equal(r.total,22);
+ assert.deepEqual(parse(only.replace('1-2','1차-2'),'1_slot_8').errors,[]);
+ assert.deepEqual(parse(only.replace('1-2','1-2차'),'1_slot_8').errors,[]);
+ const nested=parse('1\t95\r\n'+split.split('\r\n').slice(2,split.split('\r\n').indexOf('2\t20')).join('\r\n'),'1_slot_8');assert.deepEqual(nested.errors,[]);assert.equal(nested.total,95);
+});
+test('part subtotal mismatch or duplicated part header is rejected',()=>{
+ assert.ok(parse(split.replace('1-1\t73','1-1\t74'),'1_slot_8').errors.length);
+ assert.ok(parse(split+'\r\n1-1\t1\r\n생물 홍합 1kg\t1','1_slot_8').errors.length);
+});
+test('admin save keeps the other stored part and stores the 1차 sum',async()=>{
+ let day={slots:{'1_slot_8':{label:'1차 (8시)',items:{},parts:{}}}};
+ const els=new Map(),el=id=>{if(!els.has(id))els.set(id,{value:id==='slot'?'1_slot_8':id==='mode'?'replace':'',textContent:'',className:'',disabled:false,classList:{add(){}},events:{},addEventListener(event,cb){const previous=this.events[event];this.events[event]=(...args)=>{if(previous)previous(...args);return cb(...args);};}});return els.get(id);};
+ const context=vm.createContext({document:{getElementById:el},firebase:{initializeApp(){},database(){return {ref(){return {once:async()=>({val:()=>day.slots['1_slot_8']}),transaction:async fn=>{day=fn(JSON.parse(JSON.stringify(day)));}}}}}},fetch:async()=>({ok:true,json:async()=>catalog}),MfPivotImport:{parsePivot},URLSearchParams,Intl,Date,TextEncoder,TextDecoder,Uint8Array,btoa:s=>Buffer.from(s,'binary').toString('base64'),atob:s=>Buffer.from(s,'base64').toString('binary'),sessionStorage:{getItem:()=>null},location:{search:''},setTimeout(){}});
+ const html=fs.readFileSync(path.join(__dirname,'../admin.html'),'utf8');
+ vm.runInContext([...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m=>m[1]).find(s=>s.includes('const firebaseConfig')),context);
+ el('date').value=date;el('slot').value='1_slot_8';
+ const sum=slot=>Object.values(slot.items).reduce((s,v)=>s+v,0);
+ el('pivot').value='1-1\t73\n'+lines(first.slice(0,6));await el('convert').events.click();await el('save').events.click();
+ assert.equal(sum(day.slots['1_slot_8']),73);
+ el('pivot').value='1-2\t22\n'+lines(first.slice(6));el('pivot').events.input();await el('convert').events.click();await el('save').events.click();
+ assert.equal(sum(day.slots['1_slot_8']),95);assert.deepEqual(Object.keys(day.slots['1_slot_8'].parts).sort(),['1-1','1-2']);
+ el('pivot').value=split;el('pivot').events.input();await el('convert').events.click();await el('save').events.click();
+ assert.equal(sum(day.slots['1_slot_8']),95);
+ assert.ok(el('existing').textContent.includes('1-1')&&el('existing').textContent.includes('1-2'));
+});
