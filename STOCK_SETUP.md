@@ -27,7 +27,7 @@ saveMfStock callable은 인증된 승인 Google 계정만 허용하고 서버에
 
 Firestore 규칙은 기존 클라이언트 전체 거부 규칙을 유지합니다. 서버 Admin SDK만 저장·조회합니다. RTDB 발주 데이터 및 AI 사용횟수는 변경하지 않습니다. 실제 서비스 배포 전 규칙이 배포되어 있는지 확인합니다. 새 함수에는 AI 비밀키 바인딩이 없습니다.
 
-등록 승인 주소는 functions/index.js와 stock.html에 동일하게 지정합니다. 신규 직원 이메일 확정 후 기존 staff.html까지 3곳을 함께 변경합니다.
+등록 승인 주소는 functions/index.js와 stock.html에 동일하게 지정합니다. 신규 직원 이메일 확정 후 두 곳을 함께 변경합니다.
 
 ## 배포와 시험
 
