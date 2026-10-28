@@ -8,6 +8,7 @@
 <script src="stock-workbook.js?v=20261006"></script>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f3f6f9;color:#17212b;font:16px system-ui,'Malgun Gothic',sans-serif}main{max-width:1000px;margin:auto;padding:20px}header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{font-size:28px;margin:0}h2{font-size:21px}nav{display:flex;gap:14px}a{color:#175caa}section,details.panel{background:white;border:1px solid #d5dce3;border-radius:12px;padding:20px;margin:16px 0}summary{cursor:pointer;font-weight:800;font-size:19px}label{display:block;font-weight:700;margin:14px 0 6px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}input,select,textarea,button{font:inherit}input:not([type=checkbox]),select,textarea{width:100%;padding:11px;border:1px solid #aeb9c3;border-radius:7px}textarea{min-height:170px}button{border:0;border-radius:8px;padding:12px 18px;min-height:44px;background:#175caa;color:white;font-weight:750;cursor:pointer;margin:8px 4px 8px 0}button:disabled{background:#87939d;cursor:not-allowed}.secondary{background:#5b6570}.hint{font-size:14px;color:#526272;line-height:1.6}.status{white-space:pre-wrap;line-height:1.6}.error{color:#a52222}.ok{color:#166534}.metrics{display:flex;gap:24px;flex-wrap:wrap;padding:15px;background:#eef5ff;border-radius:9px}.metrics strong{font-size:26px;color:#123f6d}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}td,th{padding:12px 8px;text-align:left;border-bottom:1px solid #dce3e9}th{background:#173e63;color:white}td:nth-child(2){font-weight:800;font-size:20px;text-align:right;white-space:nowrap}th:nth-child(2){text-align:right}.identifiers{font-size:12px;color:#526272;display:block;margin-top:4px}.pending{color:#9a6700}.check{font-weight:400;line-height:1.6;background:#eef5ff;padding:14px;border-radius:8px}input[type=checkbox]{width:20px;height:20px;vertical-align:middle}[hidden]{display:none!important}@media(max-width:600px){main{padding:12px}.row{grid-template-columns:1fr}section,details.panel{padding:15px}td,th{padding:10px 5px;font-size:14px}.identifiers{overflow-wrap:anywhere}}
+tr.group-row td{background:#e3ebf3;color:#173e63;font-weight:800;padding:8px 10px;border-bottom:2px solid #b8c5cf}
 @media print{body{background:white}header nav,#import-panel,.view-controls{display:none}main{max-width:none}section{border:0}th{background:#ddd;color:black}}
 </style></head><body><main>
 <header><h1>MF 현재고</h1><nav><a href="index.html">작업지시서</a><a href="#import-panel" id="open-import">재고 등록</a></nav></header>
@@ -52,19 +53,48 @@ $('stock-date').value=kstNow().slice(0,10);$('stock-time').value=kstNow().slice(
 let draft=null,busy=false,loadTicket=0,current=null,currentDate='',currentId='',viewSelection={};
 function state(){ $('save').disabled=busy||!draft||!canRegister()||!$('confirmed').checked;document.querySelectorAll('#import-panel input,#import-panel select,#import-panel textarea,#inspect,#preview').forEach(el=>el.disabled=busy);$('login').disabled=busy;$('logout').disabled=busy; }
 function invalidate(){draft=null;$('preview-panel').hidden=true;$('confirmed').checked=false;state();}
+const stockGroups=[
+ ['오징어',['손질오징어(통) 500g','손질오징어(통) 900g','손질오징어(할복) 500g','손질오징어(할복) 900g']],
+ ['갑오징어',['갑오징어 400g','갑오징어 600g']],
+ ['백조기',['손질 백조기 500g 1개','손질 백조기 900g 1개']],
+ ['고등어',['손질 고등어 500g','손질 고등어 900g','토막고등어 800g','토막고등어 1kg']],
+ ['홍합',['생물 홍합 1kg','생물 홍합 3kg']],
+ ['물바지락',['생물 물바지락 700g 1개','생물 물바지락 1kg 1개']],
+ ['황돔',['손질 황돔 500g 1개','손질 황돔 900g 1개']],
+ ['새우',['활새우 800g','활새우 1.2kg','보리새우 600g','보리새우 1.2kg']],
+ ['대합',['생물 대합 600g 1개','생물 대합 1kg 1개']],
+ ['뿔소라',['생물 뿔소라 600g','생물 뿔소라 1kg']],
+ ['돌멍게',['생물 돌멍게 400g','생물 돌멍게 1kg']],
+ ['홍가리비',['홍가리비 1kg','홍가리비 1.5kg','홍가리비 2.5kg']],
+ ['통영생굴',['[로켓프레시] 위드프레쉬 산지직송 통영 생굴 800g','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 1kg','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 2kg','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 3kg','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 5kg']]
+];
+// 기준표에 있는 품목은 저장된 이름·상태와 관계없이 기준표의 현장명과 '확인 완료'로 표시합니다. 품목군 순서대로 같은 품목이 이어지게 정렬합니다.
 function completeRows(rows,catalog){
- const present=new Set();
- const display=catalog.map(item=>{const row=rows.find(r=>r.barcode===item.barcode||(item.productId&&r.productId===item.productId)||r.name===item.name);if(row){present.add(row);return row;}return {...item,quantity:0,sourceRowCount:0,status:'재고 0'};});
- display.push(...rows.filter(r=>!present.has(r)));return display;
+ const present=new Set(),used=new Set(),byName=new Map(catalog.map(item=>[item.name,item])),display=[];
+ const entry=(item,group)=>{
+  used.add(item);const name=item.displayName||item.name;
+  const row=rows.find(r=>r.barcode===item.barcode||(item.productId&&r.productId===item.productId)||r.name===item.name);
+  if(row){present.add(row);return {...row,group,name,status:'확인 완료'};}
+  return {...item,group,name,quantity:0,sourceRowCount:0,status:'재고 0'};
+ };
+ for(const [group,names] of stockGroups)for(const n of names){const item=byName.get(n);if(item)display.push(entry(item,group));}
+ for(const item of catalog)if(!used.has(item))display.push(entry(item,'기타 품목'));
+ display.push(...rows.filter(r=>!present.has(r)).map(r=>({...r,group:'신규 SKU 확인',status:r.status==='확인 완료'?'신규 SKU 확인 필요':r.status})));
+ return display;
 }
+const pendingOf=display=>display.filter(r=>r.status==='신규 SKU 확인 필요').length;
+const cleanWarnings=(warnings,display)=>{const pending=pendingOf(display),list=(warnings||[]).filter(w=>!/^신규 SKU \d+품목/.test(w));if(pending)list.push('신규 SKU '+pending+'품목은 원문 식별자로 표시하며 확인이 필요합니다.');return list;};
 async function renderTable(target,rows){
  const display=completeRows(rows,await catalogReady);
  target.replaceChildren();const table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr');
  ['현장명','현재재고','확인 상태'].forEach(s=>{const th=document.createElement('th');th.textContent=s;tr.append(th)});head.append(tr);table.append(head);const body=document.createElement('tbody');
- display.forEach(r=>{const line=document.createElement('tr'),name=document.createElement('td'),qty=document.createElement('td'),status=document.createElement('td');name.textContent=r.name;
+ const sums=new Map();display.forEach(r=>sums.set(r.group,(sums.get(r.group)||0)+(r.quantity||0)));let group=null;
+ display.forEach(r=>{
+  if(r.group!==group){group=r.group;const gl=document.createElement('tr'),gc=document.createElement('td');gl.className='group-row';gc.colSpan=3;gc.textContent=group+' · 합계 '+sums.get(group).toLocaleString('ko-KR')+'개';gl.append(gc);body.append(gl);}
+  const line=document.createElement('tr'),name=document.createElement('td'),qty=document.createElement('td'),status=document.createElement('td');name.textContent=r.name;
   const ids=document.createElement('span');ids.className='identifiers';ids.textContent=[r.barcode?'바코드 '+r.barcode:'',r.productId?'외부 SKU '+r.productId:'',r.sourceRowCount?r.sourceRowCount+'행 합산':'재고 0'].filter(Boolean).join(' · ');name.append(ids);
   qty.textContent=r.quantity===null?'—':r.quantity.toLocaleString('ko-KR');status.textContent=r.status;status.className=r.status==='확인 완료'?'':'pending';line.append(name,qty,status);body.append(line);
- });table.append(body);target.append(table);
+ });table.append(body);target.append(table);return display;
 }
 function setLink(){const url=new URL(location.href);url.search='';if(current){url.searchParams.set('date',current.date);url.searchParams.set('id',current.id);}history.replaceState(null,'',url);}
 async function load(options={}){
@@ -76,8 +106,8 @@ async function load(options={}){
   if(currentId)$('history').value=currentId;
   $('metrics').hidden=!current;$('stock-table').replaceChildren();$('recorded').textContent='';$('view-warnings').textContent='';
   if(current){
-   $('asof').textContent=current.asOf.replace('T',' ')+' 기준 재고';$('item-count').textContent=current.itemCount;$('stock-total').textContent=current.total.toLocaleString('ko-KR');$('pending-count').textContent=current.pendingCount;
-   $('recorded').textContent='등록 시각: '+new Date(current.savedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});await renderTable($('stock-table'),current.rows);$('view-warnings').textContent=(current.warnings||[]).join('\n');
+   $('asof').textContent=current.asOf.replace('T',' ')+' 기준 재고';$('item-count').textContent=current.itemCount;$('stock-total').textContent=current.total.toLocaleString('ko-KR');
+   $('recorded').textContent='등록 시각: '+new Date(current.savedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});const shown=await renderTable($('stock-table'),current.rows);$('pending-count').textContent=pendingOf(shown);$('view-warnings').textContent=cleanWarnings(current.warnings,shown).join('\n');
    $('view-status').textContent=current.id===data.latestId?'가장 최신 등록 재고입니다.':'지난 재고 기록을 보고 있습니다.';$('share').disabled=false;$('download').disabled=false;
   }else{$('asof').textContent=data.date+' 재고';$('view-status').textContent='아직 등록된 재고가 없습니다. 재고 등록에서 엑셀 내용을 붙여넣으세요.';}
   setLink();
@@ -105,8 +135,8 @@ $('preview').onclick=async()=>{
  busy=true;state();$('import-status').textContent='현재재고를 집계하고 검산하고 있어요…';
  try{const catalog=await catalogReady;let parsed=MfStockImport.parseStock(request.text,{...request,catalog});if(!parsed.verified)throw Error(parsed.errors.join('\n'));if(!request.date||!request.time)throw Error('재고 기준 날짜와 시간을 선택하세요.');
   if(canRegister()){const response=await write(withCode({...request,dryRun:true}));parsed=response.data;}
-  draft={request,parsed};$('preview-panel').hidden=false;$('preview-summary').textContent=request.date+' '+request.time+' 기준 · '+parsed.itemCount+'품목 / 총 '+parsed.total+'개\n원본 '+parsed.sourceRowCount+'행 합 = SKU별 합 '+parsed.total+'개\n'+parsed.warnings.join('\n');
-  await renderTable($('preview-table'),parsed.rows);$('import-status').className='status ok';$('import-status').textContent=canRegister()?'집계 완료. 아래 품목과 수량을 엑셀과 비교하고 확인 칸을 체크하세요.':'집계 완료. 저장하려면 위의 재고 등록용 번호를 입력하고 아래 확인 칸을 체크하세요.';
+  draft={request,parsed};$('preview-panel').hidden=false;const shown=await renderTable($('preview-table'),parsed.rows);$('preview-summary').textContent=request.date+' '+request.time+' 기준 · '+parsed.itemCount+'품목 / 총 '+parsed.total+'개\n원본 '+parsed.sourceRowCount+'행 합 = SKU별 합 '+parsed.total+'개\n'+cleanWarnings(parsed.warnings,shown).join('\n');
+  $('import-status').className='status ok';$('import-status').textContent=canRegister()?'집계 완료. 아래 품목과 수량을 엑셀과 비교하고 확인 칸을 체크하세요.':'집계 완료. 저장하려면 위의 재고 등록용 번호를 입력하고 아래 확인 칸을 체크하세요.';
  }catch(e){$('import-status').className='status error';$('import-status').textContent=e.message;}finally{busy=false;state();}
 };
 $('save').onclick=async()=>{

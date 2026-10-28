@@ -139,12 +139,14 @@
   {
     "barcode": "8809929791479",
     "name": "[로켓프레시] 위드프레쉬 산지직송 통영 생굴 800g",
-    "productId": "80909220"
+    "productId": "80909220",
+    "displayName": "통영생굴 800g"
   },
   {
     "barcode": "8809929791486",
     "name": "[로켓프레시] 위드프레쉬 산지직송 통영 생굴 1kg",
-    "productId": "80909228"
+    "productId": "80909228",
+    "displayName": "통영생굴 1kg"
   },
   {
     "barcode": "8809929791400",
@@ -170,7 +172,8 @@
     "aliases": [
       "통영 생굴 2kg"
     ],
-    "productId": "82323353"
+    "productId": "82323353",
+    "displayName": "통영생굴 2kg"
   },
   {
     "barcode": "8809929791714",
@@ -178,7 +181,8 @@
     "aliases": [
       "통영 생굴 3kg"
     ],
-    "productId": "82323362"
+    "productId": "82323362",
+    "displayName": "통영생굴 3kg"
   },
   {
     "barcode": "8809929791721",
@@ -186,7 +190,8 @@
     "aliases": [
       "통영 생굴 5kg"
     ],
-    "productId": "82323342"
+    "productId": "82323342",
+    "displayName": "통영생굴 5kg"
   },
   {
     "barcode": "8809929791738",
