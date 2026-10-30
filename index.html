@@ -6,6 +6,7 @@
 <title>MF 발주 현황</title>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+<script src="mf-groups.js"></script>
 <style>
 :root{color-scheme:light;font-family:system-ui,'Malgun Gothic',sans-serif}
 *{box-sizing:border-box}body{background:#f3f6f9;color:#10202e;margin:0}
@@ -21,7 +22,7 @@ h1{font-size:clamp(1.25rem,5vw,1.8rem);margin:0}#order-date{font:inherit;font-si
 </head>
 <body>
 <header class="top"><div class="top-inner">
-<div class="top-line"><h1 id="today-date">MF 현장 작업지시서</h1><div class="controls"><label for="order-date">조회 날짜 <input id="order-date" type="date"></label><a class="admin-button" href="admin.html">수동입력</a><a class="admin-button" href="stock.html">현재고</a><button class="print-button" type="button" onclick="window.print()">인쇄</button></div></div>
+<div class="top-line"><h1 id="today-date">MF 현장 작업지시서</h1><div class="controls"><label for="order-date">조회 날짜 <input id="order-date" type="date"></label><a class="admin-button" href="admin.html">수동입력</a><a class="admin-button" href="stock.html">현재고</a><a class="admin-button" href="report.html">기간 집계</a><button class="print-button" type="button" onclick="window.print()">인쇄</button></div></div>
 <div class="summary"><div id="status-banner" class="status-banner" role="status">데이터 대기 중...</div><div class="grand-total">누적 순건수 <strong id="grand-total">—</strong>건</div></div>
 <p id="updated" class="updated"></p>
 </div></header>
@@ -38,20 +39,7 @@ let activeRef=null;
 const slotOrder=['1_slot_8','2_slot_10','3_slot_12','4_slot_13'];
 const slotHeadings={'1_slot_8':'1차','2_slot_10':'2차','3_slot_12':'3차','4_slot_13':'4차'};
 const slotStatusLabels={'1_slot_8':'1차 반영','2_slot_10':'2차 반영','3_slot_12':'3차 반영','4_slot_13':'4차 마감'};
-const catalog=[
-{group:'오징어',items:['손질오징어(통) 500g','손질오징어(통) 900g','손질오징어(할복) 500g','손질오징어(할복) 900g']},
-{group:'백조기',items:['손질 백조기 500g 1개','손질 백조기 900g 1개']},
-{group:'고등어',items:['손질 고등어 500g','손질 고등어 900g','토막고등어 800g','토막고등어 1kg']},
-{group:'홍합',items:['생물 홍합 1kg','생물 홍합 3kg']},
-{group:'물바지락',items:['생물 물바지락 700g 1개','생물 물바지락 1kg 1개']},
-{group:'황돔',items:['손질 황돔 500g 1개','손질 황돔 900g 1개']},
-{group:'새우',items:['활새우 800g','활새우 1.2kg','보리새우 600g','보리새우 1.2kg']},
-{group:'대합',items:['생물 대합 600g 1개','생물 대합 1kg 1개']},
-{group:'뿔소라',items:['생물 뿔소라 600g','생물 뿔소라 1kg']},
-{group:'돌멍게',items:['생물 돌멍게 400g','생물 돌멍게 1kg']},
-{group:'통영생굴',items:['[로켓프레시] 위드프레쉬 산지직송 통영 생굴 800g','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 1kg','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 2kg','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 3kg','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 5kg']}
-];
-const displayNames={'[로켓프레시] 위드프레쉬 산지직송 통영 생굴 800g':'통영생굴 800g','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 1kg':'통영생굴 1kg','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 2kg':'통영생굴 2kg','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 3kg':'통영생굴 3kg','[로켓프레시] 위드프레쉬 산지직송 통영 생굴 5kg':'통영생굴 5kg'};
+const {catalog,displayNames}=MfGroups;
 function showDate(){
  if(activeRef)activeRef.off();const selectedDate=dateInput.value;if(!validDate(selectedDate))return;document.getElementById('today-date').innerText=`${selectedDate} MF 현장 작업지시서`;document.querySelector('.admin-button').href=`admin.html?date=${encodeURIComponent(selectedDate)}`;activeRef=db.ref('mf_orders/'+selectedDate);
  activeRef.on('value',snapshot=>{
