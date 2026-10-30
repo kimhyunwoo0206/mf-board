@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MF 기간 집계</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+<script src="mf-groups.js"></script>
+<script src="mf-report.js"></script>
+<style>
+:root{color-scheme:light;font-family:system-ui,'Malgun Gothic',sans-serif}
+*{box-sizing:border-box}body{background:#f3f6f9;color:#10202e;margin:0}
+.top{position:sticky;top:0;z-index:2;background:#fff;border-bottom:2px solid #c8d3dd;box-shadow:0 2px 7px #10202e14}
+.top-inner,main{max-width:900px;margin:auto;padding:14px 16px}.top-line{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:clamp(1.25rem,5vw,1.8rem);margin:0}
+.button{min-height:44px;padding:10px 16px;border:0;border-radius:8px;background:#123f6d;color:#fff;font:inherit;font-weight:800;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center}.button.gray{background:#5b6570}.button.green{background:#1d6b3a}.button:disabled{opacity:.45;cursor:default}
+.range{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-top:12px}.range label{display:flex;flex-direction:column;font-size:.85rem;font-weight:700;gap:3px}
+input[type=date]{font:inherit;font-size:1rem;padding:9px;border:2px solid #657b8e;border-radius:8px;min-height:44px;background:#fff;color:#10202e}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.quick button{font:inherit;font-size:.88rem;padding:6px 11px;border:1px solid #9fb0bf;border-radius:16px;background:#fff;color:#123f6d;cursor:pointer}.quick button:hover{background:#e8f1f9}
+.summary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}.status{font-size:.95rem;font-weight:700;color:#0d4c89}.status.error{color:#a52222}.grand-total{font-size:1rem;font-weight:700;white-space:nowrap}.grand-total strong{font-size:clamp(1.8rem,7vw,2.6rem);color:#ae3b00;line-height:1}
+.section-title{font-size:1.2rem;margin:16px 0 8px}
+.table-wrap{overflow-x:auto;background:#fff;border:2px solid #aebdca;border-radius:10px}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{border:1px solid #b8c5cf;padding:8px 7px;text-align:center}thead th{background:#173e63;color:#fff;font-size:.95rem}.group{background:#dceaf5;color:#123f6d;font-weight:900;width:84px}.product{text-align:left;font-weight:700;min-width:200px}.total{background:#fff2cf;color:#9d3500;font-size:1.15rem;font-weight:900}.zero{color:#a2adb5}.cancel{color:#b3261e}tfoot td,tfoot th{background:#eef3f7;font-weight:900}tr.group-start td,tr.group-start th{border-top:3px solid #6c8295}.empty{padding:28px;text-align:center;color:#526272;background:#fff;border-radius:10px}
+td a{color:#175caa;font-weight:700}
+@media(max-width:650px){.top-inner{padding:10px 8px}main{padding:6px 4px}th,td{padding:6px 3px;font-size:.78rem}.product{min-width:120px}.group{width:auto}.total{font-size:.95rem}input[type=date]{min-height:40px;padding:6px}.button{min-height:40px;padding:7px 10px}}
+@media print{body{background:#fff}.top{position:static;box-shadow:none;border:0}.range,.quick,.no-print{display:none!important}.table-wrap{border:1px solid #000;border-radius:0}thead th{background:#e5e5e5!important;color:#000}th,td{border:1px solid #000}}
+</style>
+</head>
+<body>
+<header class="top"><div class="top-inner">
+<div class="top-line"><h1 id="title">MF 기간 집계</h1><div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap"><a class="button gray" href="index.html">작업지시서</a><button id="download" class="button green" type="button" disabled>엑셀 다운로드</button><button class="button gray" type="button" onclick="window.print()">인쇄</button></div></div>
+<div class="range"><label for="from">시작일<input id="from" type="date"></label><label for="to">종료일<input id="to" type="date"></label><button id="search" class="button" type="button">조회</button></div>
+<div class="quick"><button type="button" data-range="today">오늘</button><button type="button" data-range="yesterday">어제</button><button type="button" data-range="7">최근 7일</button><button type="button" data-range="30">최근 30일</button><button type="button" data-range="month">이번 달</button><button type="button" data-range="lastmonth">지난 달</button></div>
+<div class="summary"><div id="status" class="status" role="status">기간을 선택하세요.</div><div class="grand-total">기간 누적 순건수 <strong id="grand-total">—</strong>건</div></div>
+</div></header>
+<main>
+<h2 class="section-title">제품별 누적수량</h2><div id="products"></div>
+<h2 class="section-title">일자별 합계</h2><div id="days"></div>
+</main>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0",authDomain:"coupang-mf.firebaseapp.com",databaseURL:"https://coupang-mf-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"coupang-mf",storageBucket:"coupang-mf.firebasestorage.app",messagingSenderId:"12362663151",appId:"1:12362663151:web:51e7acce47f166a88b871a",measurementId:"G-JBKQVKJXRE"};
+firebase.initializeApp(firebaseConfig);const db=firebase.database();
+const $=id=>document.getElementById(id);
+const validDate=v=>/^\d{4}-\d{2}-\d{2}$/.test(v);
+const kst=(d=new Date())=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);
+const shift=(date,days)=>{const d=new Date(date+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);};
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char])}
+const num=v=>v===0?'<span class="zero">—</span>':v<0?'<span class="cancel">'+v+'</span>':String(v);
+let report=null,requestNo=0;
+function presetRange(kind){
+ const today=kst(),[y,m]=today.split('-').map(Number);
+ if(kind==='today')return [today,today];
+ if(kind==='yesterday'){const d=shift(today,-1);return [d,d];}
+ if(kind==='month')return [today.slice(0,8)+'01',today];
+ if(kind==='lastmonth'){const first=(m===1?(y-1)+'-12':y+'-'+String(m-1).padStart(2,'0'))+'-01';return [first,shift(today.slice(0,8)+'01',-1)];}
+ return [shift(today,-(Number(kind)-1)),today];
+}
+async function load(){
+ const from=$('from').value,to=$('to').value,no=++requestNo;
+ report=null;$('download').disabled=true;$('products').replaceChildren();$('days').replaceChildren();$('grand-total').textContent='—';
+ if(!validDate(from)||!validDate(to)){$('status').textContent='시작일과 종료일을 선택하세요.';$('status').className='status error';return;}
+ if(from>to){$('status').textContent='시작일이 종료일보다 늦습니다.';$('status').className='status error';return;}
+ history.replaceState(null,'','?from='+from+'&to='+to);
+ $('title').textContent=(from===to?from:from+' ~ '+to)+' MF 기간 집계';
+ $('status').textContent='발주를 불러오고 있어요…';$('status').className='status';
+ try{
+  const snap=await db.ref('mf_orders').orderByKey().startAt(from).endAt(to).once('value');
+  if(no!==requestNo)return;
+  report=MfReport.aggregate(snap.val()||{},{from,to,groups:MfGroups});
+  render(report);
+ }catch(e){if(no===requestNo){$('status').textContent='발주를 읽지 못했습니다: '+e.message;$('status').className='status error';}}
+}
+function render(r){
+ $('grand-total').textContent=String(r.total);
+ if(!r.products.length){$('status').textContent='선택한 기간에 등록된 발주가 없습니다.';$('products').innerHTML='<div class="empty">표시할 발주가 없습니다.</div>';return;}
+ $('status').textContent='발주 일수 '+r.dates.length+'일 · '+r.products.length+'품목';
+ $('download').disabled=false;
+ const head='<th>품목군</th><th>상품명</th>'+MfReport.slotHeadings.map(h=>'<th>'+h+'</th>').join('')+'<th>누적</th><th>발주일</th>';
+ let rows='',prev=null;
+ const groupSize=g=>r.products.filter(p=>p.group===g).length;
+ for(const p of r.products){
+  const first=p.group!==prev;prev=p.group;
+  rows+='<tr class="'+(first?'group-start':'')+'">'+(first?'<th class="group" rowspan="'+groupSize(p.group)+'">'+escapeHtml(p.group)+'</th>':'')+'<td class="product">'+escapeHtml(p.display)+'</td>'+p.slots.map(v=>'<td>'+num(v)+'</td>').join('')+'<td class="total">'+p.total+'</td><td>'+p.days+'</td></tr>';
+ }
+ $('products').innerHTML='<div class="table-wrap"><table><thead><tr>'+head+'</tr></thead><tbody>'+rows+'</tbody><tfoot><tr><th colspan="2">합계</th>'+r.slotTotals.map(v=>'<td>'+num(v)+'</td>').join('')+'<td class="total">'+r.total+'</td><td>'+r.dates.length+'</td></tr></tfoot></table></div>';
+ const dayRows=r.dates.map(d=>{const items=r.daily.filter(x=>x.date===d),slots=[0,1,2,3].map(i=>items.reduce((s,x)=>s+x.slots[i],0));return '<tr><td><a href="index.html?date='+d+'">'+d+'</a></td>'+slots.map(v=>'<td>'+num(v)+'</td>').join('')+'<td class="total">'+slots.reduce((s,v)=>s+v,0)+'</td><td>'+items.length+'</td></tr>';}).join('');
+ $('days').innerHTML='<div class="table-wrap"><table><thead><tr><th>날짜</th>'+MfReport.slotHeadings.map(h=>'<th>'+h+'</th>').join('')+'<th>합계</th><th>품목 수</th></tr></thead><tbody>'+dayRows+'</tbody></table></div>';
+}
+$('download').addEventListener('click',()=>{
+ if(!report)return;
+ try{
+  const blob=new Blob([MfReport.createWorkbook(report)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='MF_발주집계_'+(report.from===report.to?report.from:report.from+'_'+report.to)+'.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+ }catch(e){$('status').textContent=e.message;$('status').className='status error';}
+});
+$('search').addEventListener('click',load);
+document.querySelectorAll('[data-range]').forEach(b=>b.addEventListener('click',()=>{const [f,t]=presetRange(b.dataset.range);$('from').value=f;$('to').value=t;load();}));
+const qp=new URLSearchParams(location.search);
+const [defFrom,defTo]=presetRange('month');
+$('from').value=validDate(qp.get('from')||'')?qp.get('from'):defFrom;
+$('to').value=validDate(qp.get('to')||'')?qp.get('to'):defTo;
+load();
+</script>
+</body>
+</html>
