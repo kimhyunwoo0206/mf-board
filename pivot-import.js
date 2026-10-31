@@ -57,7 +57,8 @@
     for(const r of selected){
       if(r.part)parts[r.part].total+=r.quantity||0;
       if(!r.validColumns||r.quantity===null){errors.push(r.line+'행 수량 확인 필요: 상품명(A열)과 수량(B열)만 함께 복사하세요.');continue;}
-      const item=catalog.find(x=>[x.name,...(x.aliases||[])].some(a=>normalize(a)===normalize(r.name)));
+      // 엑셀 품명 칸에 상품명 대신 바코드(13자리)가 들어온 행도 기준표 바코드로 찾습니다.
+      const item=/^\d{13}$/.test(r.name)?catalog.find(x=>x.barcode===r.name):catalog.find(x=>[x.name,...(x.aliases||[])].some(a=>normalize(a)===normalize(r.name)));
       if(!item){pendingRows.push({...r,fieldName:r.name,status:'신규 SKU 확인 필요'});continue;}
       if(r.quantity){items[item.name]=(items[item.name]||0)+r.quantity;if(r.part)parts[r.part].items[item.name]=(parts[r.part].items[item.name]||0)+r.quantity;}
     }

@@ -93,3 +93,11 @@ test('admin save keeps the other stored part and stores the 1차 sum',async()=>{
  assert.equal(sum(day.slots['1_slot_8']),95);
  assert.ok(el('existing').textContent.includes('1-1')&&el('existing').textContent.includes('1-2'));
 });
+
+test('barcode in the product-name cell resolves to the catalog item and merges with the named row',()=>{
+ const text='행 레이블\t합계 : 최종수량\r\n261101\t35\r\n1\t35\r\n8809929791448\t3\r\n[로켓프레시] 위드프레쉬 산지직송 남해안 활 홍가리비 2.5kg\t32\r\n총합계\t35';
+ const r=parsePivot(text,{date:'2026-11-01',slot:1,catalog});
+ assert.deepEqual(r.errors,[]);assert.deepEqual(r.pendingRows,[]);assert.equal(r.items['홍가리비 2.5kg'],35);assert.equal(r.total,35);
+ const unknown=parsePivot(text.replace('8809929791448','8809929799999'),{date:'2026-11-01',slot:1,catalog});
+ assert.equal(unknown.pendingRows.length,1);assert.equal(unknown.items['홍가리비 2.5kg'],32);
+});
