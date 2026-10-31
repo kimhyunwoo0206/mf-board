@@ -1,0 +1,76 @@
+const {test}=require('node:test');
+const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const assert=require('node:assert/strict');
+const {looksLikeWms,parseWms}=require('../wms-import');
+const {parsePivot}=require('../pivot-import');
+const catalog=require('./catalog.json');
+const date='2026-11-01';
+// 2026-11-01 쿠팡 WMS 화면 사진을 사람이 옮겨 적은 표본입니다(실시간 데이터가 아님).
+const head='출고번호\t주문 ID\t배치 ID\t운송장 번호\t박스 타입\tSKU ID\tBarcode\t수량\t출고 마감 시간\t재고 위치\t배송구분';
+const row=(no,sku,barcode,qty=1,stamp='2026-11-01 14:00:00.0',loc='672-A1-1-1')=>[no,'118'+no,'1069934217','1033422'+no,'CSTM',sku,barcode,qty,stamp,loc,'쿠팡배송'].join('\t');
+const rows=[
+ row('1001','204065303','8809929791202',1,undefined,'672-A1-1-15'),
+ row('1002','203690733','8809929791271'),row('1003','203690733','8809929791271'),
+ row('1004','209011180','8809929791448'),row('1005','209011180','8809929791448'),
+ row('1006','203690733','8809929791271'),row('1007','209011180','8809929791448')
+];
+const table=[head,...rows].join('\r\n');
+const parse=(text=table,d=date)=>parseWms(text,{date:d,catalog});
+
+test('screen table is detected, a pivot is not',()=>{
+ assert.equal(looksLikeWms(table),true);
+ assert.equal(looksLikeWms('행 레이블\t합계 : 최종수량\r\n261101\t5\r\n8809929791448\t3\r\n총합계\t5'),false);
+});
+test('rows are summed per barcode and mapped to catalog names, header line ignored',()=>{
+ const r=parse();
+ assert.deepEqual(r.errors,[]);assert.deepEqual(r.pendingRows,[]);
+ assert.equal(r.total,7);assert.equal(r.selectedRowCount,7);
+ assert.equal(r.items['손질 백조기 500g 1개'],1);assert.equal(r.items['손질오징어(할복) 500g'],3);assert.equal(r.items['홍가리비 2.5kg'],3);
+});
+test('works without a header line and with quantity above 1',()=>{
+ const r=parse(row('2001','1','8809929791448',5)+'\n'+row('2002','1','8809929791448',2));
+ assert.deepEqual(r.errors,[]);assert.equal(r.items['홍가리비 2.5kg'],7);
+});
+test('pasting the same screen twice is blocked',()=>{
+ const r=parse(table+'\r\n'+table);
+ assert.match(r.errors.join('\n'),/중복/);
+});
+test('different shipment rows with equal barcode are not duplicates',()=>{
+ assert.deepEqual(parse(table+'\r\n'+row('1008','203690733','8809929791271')).errors,[]);
+});
+test('wrong shipping date is blocked',()=>{
+ assert.match(parse(table,'2026-11-02').errors.join('\n'),/출고 마감일\(2026-11-01\)/);
+});
+test('unknown barcode is held back as new SKU and does not block known items',()=>{
+ const r=parse(table+'\r\n'+row('1009','5','8809929799999',2));
+ assert.deepEqual(r.errors,[]);assert.equal(r.pendingRows.length,1);assert.equal(r.pendingRows[0].fieldName,'8809929799999');assert.equal(r.pendingRows[0].quantity,2);
+ assert.equal(r.total,9);assert.equal(r.items['홍가리비 2.5kg'],3);
+});
+test('a row with barcode but without quantity or shipping time is reported',()=>{
+ const r=parse(table+'\r\n822397292553\t11814290924\t1069934199\t10334224342816\tCSTM\t204065303\t8809929791202\t쿠팡배송');
+ assert.match(r.errors.join('\n'),/행:/);
+});
+test('empty or unrelated text is rejected',()=>{
+ assert.match(parse('출고번호\t주문 ID\t배치 ID').errors.join('\n'),/출고 행을 찾지 못했습니다/);
+});
+test('pivot import still works unchanged',()=>{
+ const r=parsePivot('행 레이블\t합계 : 건수\r\n261101\t5\r\n1\t5\r\n[로켓프레시] 위드프레쉬 산지직송 남해안 활 홍가리비 2.5kg\t5\r\n총합계\t5',{date,slot:1,catalog});
+ assert.deepEqual(r.errors,[]);assert.equal(r.items['홍가리비 2.5kg'],5);
+});
+
+function adminHarness(){
+ const els=new Map(),el=id=>{if(!els.has(id))els.set(id,{value:id==='slot'?'1_slot_8':id==='mode'?'replace':'',textContent:'',className:'',disabled:false,classList:{add(){}},events:{},addEventListener(event,cb){const previous=this.events[event];this.events[event]=(...args)=>{if(previous)previous(...args);return cb(...args);};}});return els.get(id);};
+ let writes=0;
+ const context=vm.createContext({document:{getElementById:el},firebase:{initializeApp(){},database(){return {ref(){return {once:async()=>({val:()=>null}),transaction:async()=>{writes++;}}}}}},fetch:async()=>({ok:true,json:async()=>catalog}),MfPivotImport:{parsePivot},MfWmsImport:require('../wms-import'),URLSearchParams,Intl,Date,TextEncoder,TextDecoder,Uint8Array,btoa:s=>Buffer.from(s,'binary').toString('base64'),atob:s=>Buffer.from(s,'base64').toString('binary'),sessionStorage:{getItem:()=>null},location:{search:''},setTimeout(){}});
+ const html=fs.readFileSync(path.join(__dirname,'../admin.html'),'utf8');
+ const script=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m=>m[1]).find(s=>s.includes('const firebaseConfig'));
+ vm.runInContext(script,context);el('date').value=date;el('slot').value='2_slot_10';
+ return {el,writes:()=>writes};
+}
+test('actual admin imports a pasted Coupang screen table without a subtotal and without writing data',async()=>{
+ const h=adminHarness();h.el('pivot').value=table;await h.el('convert').events.click();
+ assert.ok(h.el('raw').value.includes('홍가리비 2.5kg : 3건'));assert.ok(h.el('raw').value.includes('손질오징어(할복) 500g : 3건'));assert.ok(h.el('raw').value.includes('손질 백조기 500g 1개 : 1건'));
+ assert.ok(h.el('pivot-status').textContent.includes('7건'));assert.ok(h.el('pivot-status').textContent.includes('총 건수를 입력하지 않아'));assert.equal(h.writes(),0);
+ h.el('pivot-total').value='9';await h.el('convert').events.click();assert.equal(h.el('raw').value,'');assert.ok(h.el('pivot-status').textContent.includes('다릅니다'));
+ h.el('pivot-total').value='7';await h.el('convert').events.click();assert.ok(h.el('raw').value.includes('홍가리비 2.5kg : 3건'));
+});

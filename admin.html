@@ -53,9 +53,10 @@
   </section>
 
   <section>
-    <h2>2. 엑셀 피벗 붙여넣기</h2>
+    <h2>2. 붙여넣기 (쿠팡 화면 표 또는 엑셀 피벗)</h2>
     <p class="hint">쿠팡 노트북의 엑셀에서 <b>상품명(A열)과 수량(B열)</b>을 함께 선택해 Ctrl+C → 아래 칸에 Ctrl+V 하세요. 선택한 차수의 머리글·소계와 모든 상품 행을 포함하세요. 전체 피벗을 복사해도 위에서 선택한 차수만 가져옵니다. <b>1차는 1-1·1-2 두 묶음을 합산</b>해 1차로 등록하며, 한 묶음만 붙여넣으면 나머지 묶음은 기존 저장분을 유지합니다.</p>
-    <textarea id="pivot" placeholder="엑셀에서 복사한 내용을 여기에 붙여넣으세요"></textarea>
+    <p class="hint"><b>엑셀 없이 바로 붙여넣기:</b> 쿠팡 WMS 출고 화면의 표(출고번호~배송구분)를 드래그해 복사(Ctrl+C)하고 아래 칸에 붙여넣으면 바코드별 수량을 자동 합산합니다. 위에서 선택한 날짜·차수로 등록되며, 100건씩 나뉘면 다음 페이지를 이어서 붙여넣으세요. 화면에 총 건수가 보이면 아래 소계 칸에 입력해 누락을 검산하세요.</p>
+    <textarea id="pivot" placeholder="쿠팡 화면 표 또는 엑셀 피벗을 여기에 붙여넣으세요"></textarea>
     <label for="pivot-total">차수 소계 (머리글을 복사하지 않은 경우 직접 입력)</label>
     <input id="pivot-total" type="number" min="0" step="1" style="width:100%;padding:11px">
     <button id="convert" type="button">선택한 차수 가져오기</button>
@@ -73,6 +74,7 @@
   </section>
 </main>
 <script src="pivot-import.js"></script>
+<script src="wms-import.js"></script>
 <script>
 const firebaseConfig={
   apiKey:"AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0",
@@ -290,9 +292,10 @@ $("convert").addEventListener("click",async()=>{
   try{
     const catalog=await catalogReady;
     if(date!==$("date").value||slot!==$("slot").value||text!==$("pivot").value||manual!==$("pivot-total").value)throw new Error("입력이 바뀌었습니다. 다시 가져오세요.");
-    const imported=MfPivotImport.parsePivot(text,{date,slot,catalog});
+    const imported=MfWmsImport.looksLikeWms(text)?MfWmsImport.parseWms(text,{date,catalog}):MfPivotImport.parsePivot(text,{date,slot,catalog});
     if(imported.errors.length)throw new Error(imported.errors.join("\n"));
-    const expected=manual===""?imported.sourceTotal:Number(manual);
+    // 쿠팡 화면 표에는 소계가 없으므로 합계를 그대로 쓰고, 직접 입력한 총 건수가 있으면 그것과 비교합니다.
+    const expected=manual===""?(imported.source==="wms"?imported.total:imported.sourceTotal):Number(manual);
     if(!Number.isSafeInteger(expected)||expected<0)throw new Error("선택 차수 머리글의 소계 숫자를 함께 복사하거나 위 소계 칸에 직접 입력하세요.");
     if(expected!==imported.total)throw new Error("차수 소계 "+expected+"건과 상품 합 "+imported.total+"건이 다릅니다. 모든 행을 다시 복사하세요.");
     if(manual!=="" && imported.sourceTotal!==null && expected!==imported.sourceTotal)throw new Error("직접 입력한 소계와 엑셀 머리글 소계가 다릅니다.");
@@ -303,7 +306,7 @@ $("convert").addEventListener("click",async()=>{
     updateSummary();
     const partInfo=imported.parts?"\n"+Object.entries(imported.parts).map(([part,p])=>part+" "+p.total+"건").join(" + ")+" → 1차로 합산"+(Object.keys(imported.parts).length<2?" (붙여넣지 않은 묶음은 기존 저장분 유지)":""):"";
     $("pivot-status").className="status ok";
-    $("pivot-status").textContent=labels[slot]+" 검산 완료: "+imported.selectedRowCount+"행 / "+imported.total+"건 · 다른 차수 제외 "+imported.excludedRowCount+"행"+partInfo+(imported.dailyTotal===null?"":"\n하루 총합 "+imported.dailyTotal+"건 (참고)")+(pendingRows.length?"\n신규 SKU 확인 필요: "+pendingRows.map(r=>r.fieldName+" "+r.quantity+"건").join(", ")+" — 기존 품목만 등록하며 신규 행은 보류합니다.":"")+"\n아래 품목과 숫자를 확인한 뒤 저장을 누르세요.";
+    $("pivot-status").textContent=labels[slot]+" 검산 완료: "+imported.selectedRowCount+"행 / "+imported.total+"건 · 다른 차수 제외 "+imported.excludedRowCount+"행"+partInfo+(imported.dailyTotal===null?"":"\n하루 총합 "+imported.dailyTotal+"건 (참고)")+(pendingRows.length?"\n신규 SKU 확인 필요: "+pendingRows.map(r=>r.fieldName+" "+r.quantity+"건").join(", ")+" — 기존 품목만 등록하며 신규 행은 보류합니다.":"")+(imported.notes&&imported.notes.length?"\n"+imported.notes.join("\n"):"")+(imported.source==="wms"&&manual===""?"\n총 건수를 입력하지 않아 화면의 총 건수와 직접 비교해 주세요.":"")+"\n아래 품목과 숫자를 확인한 뒤 저장을 누르세요.";
   }catch(e){$("raw").value="";pendingRows=[];pivotImported=false;importedParts=null;updateSummary();$("pivot-status").className="status error";$("pivot-status").textContent=e.message;}
   finally{$("convert").disabled=false;}
 });
