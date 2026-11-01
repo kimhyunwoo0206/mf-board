@@ -60,6 +60,12 @@
   function parseCancel(text){
     // 쿠팡 화면은 셀 안에서 줄바꿈이 되어 한 건이 여러 줄로 붙여넣어지므로, 줄이 아니라 '칸(토큰)' 순서로 읽습니다.
     // 한 건 = 직전 쉬핑먼트 ID 다음 칸부터 이번 쉬핑먼트 ID(12자리)까지. 배치 ID는 그 12자리 바로 앞쪽(계획 출고 ID·주문번호 앞)에 있습니다.
+    const rows0=String(text);
+    // 운송장 번호(103으로 시작하는 14자리)만 붙여넣은 경우: 붙여넣은 번호를 모두 취소 대상으로 봅니다.
+    if(!/(^|[\t\r\n"])\d{12}([\t\r\n"]|$)/.test(rows0)){
+      const ws=[...new Set(rows0.match(/\b103\d{11}\b/g)||[])];
+      return {rows:ws.map(w=>({id:w,keys:[w],hasBatch:true,batch:''})),notCancelled:[],ignoredLines:0};
+    }
     const tokens=String(text).replace(/^\uFEFF/,'').split(/\t|\r?\n/).map(x=>x.replace(/^"+|"+$/g,'').trim()).filter(Boolean);
     const rows=[],seen=new Set(),notCancelled=[];let prev=-1;
     tokens.forEach((t,i)=>{
@@ -77,7 +83,8 @@
   }
   // day = mf_orders/{날짜} 저장분. 어느 차수에 등록된 출고번호인지 찾아 차감할 품목·수량을 계산합니다.
   function resolveCancels(day,rows,catalog){
-    const slots=(day&&day.slots)||{},done=(day&&day.cancelled)||{};
+    const slots=(day&&day.slots)||{},done={};
+    for(const [id,c] of Object.entries((day&&day.cancelled)||{})){done[id]=1;for(const k of (c&&c.keys)||[])done[k]=1;}
     const res={matched:[],already:[],noBatch:[],notFound:[],unknownBarcode:[]};
     for(const r of rows){
       if(!r.hasBatch){res.noBatch.push(r.id);continue;}

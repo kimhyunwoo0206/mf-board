@@ -25,6 +25,7 @@
      dayItems.get(name)[si]+=q;slotTotals[si]+=q;
     }
    });
+   for(const c of Object.values(orders[date]?.cancelled||{})){const si=slotOrder.indexOf(c&&c.from);if(si<0)continue;for(const l of c.lines||[]){const q=Number(l.qty)||0;if(!q)continue;if(!dayItems.has(l.name))dayItems.set(l.name,[0,0,0,0]);dayItems.get(l.name)[si]-=q;slotTotals[si]-=q;}}
    if(!dayItems.size)continue;
    dates.push(date);
    for(const [name,values] of [...dayItems].sort((a,b)=>sortKey(a[0])-sortKey(b[0])||a[0].localeCompare(b[0],'ko'))){

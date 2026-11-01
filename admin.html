@@ -74,7 +74,7 @@
   </section>
   <section>
     <h2>4. 취소 건 등록 (배치 생성 후 취소)</h2>
-    <p class="hint">쿠팡 WMS <b>출고 관리</b>에서 출고 상태를 <b>출고 취소</b>로 검색한 목록을 복사해 붙여넣으세요. <b>배치 ID가 있는 건</b>만 위에서 선택한 차수에 <b>취소(−)</b>로 차감하고, 배치 ID가 <b>-</b>인 건은 등록 전 취소라 제외합니다. 같은 취소를 다시 붙여넣어도 중복 차감하지 않습니다. 차감은 이 화면에서 쿠팡 화면 표를 붙여넣어 저장한 건만 가능합니다.</p>
+    <p class="hint">쿠팡 WMS <b>출고 관리</b>에서 출고 상태를 <b>출고 취소</b>로 검색한 목록을 복사해 붙여넣으세요. <b>운송장 번호만 한 줄씩 붙여넣어도 됩니다</b>(배치 생성 후 취소된 건만 골라 붙여넣으세요). 발주 등록 때 저장된 운송장 번호로 품목을 찾아 <b>취소</b>로 등록하고, 현장 화면에 취소와 실출고(누적−취소)를 보여 줍니다. 같은 번호를 다시 붙여넣어도 중복 차감하지 않습니다. 이 기능이 생긴 뒤 쿠팡 화면 표를 붙여넣어 저장한 건만 찾을 수 있습니다.</p>
     <textarea id="cancel-text" placeholder="출고 관리 &gt; 출고 취소 목록을 여기에 붙여넣으세요"></textarea>
     <button id="cancel-check" type="button">취소 건 확인</button>
     <button id="cancel-save" type="button" disabled>취소 차감 저장</button>
@@ -229,7 +229,7 @@ async function saveData(isAuto=false){
       day.slots[slot]={label:labels[slot],items:encodeItems(rawToSave),updatedAt:savedAt};
       if(importedShipments){
         day.slots[slot].shipments={...(mode==='merge'?prevShipments:{}),...importedShipments};
-        if(mode!=='merge'&&day.cancelled)for(const [id,c] of Object.entries(day.cancelled))if(c&&c.slot===slot)delete day.cancelled[id];
+        if(mode!=='merge'&&day.cancelled)for(const [id,c] of Object.entries(day.cancelled))if(c&&c.from===slot&&!(c.keys||[id]).some(k=>importedShipments[k]))delete day.cancelled[id];
       }else if(Object.keys(prevShipments).length&&(mode==='merge'||pivotImported===false))day.slots[slot].shipments=prevShipments;
       if(partsToSave)day.slots[slot].parts=partsToSave;
       if(pending.length)day.slots[slot].pendingSkuRows=pending;
@@ -335,7 +335,7 @@ function cancelMsg(cls,t){$("cancel-status").className="status "+cls;$("cancel-s
 function describeCancel(res,rows,extra){
   const ln=[];
   if(res.matched.length){const sum={};res.matched.forEach(m=>m.lines.forEach(l=>sum[l.name]=(sum[l.name]||0)+l.qty));
-    ln.push("차감 대상 "+res.matched.length+"건:\n"+Object.entries(sum).map(([n,q])=>"  "+n+" : 취소 "+q+"건").join("\n"));}
+    ln.push("취소 등록 대상 "+res.matched.length+"건:\n"+Object.entries(sum).map(([n,q])=>"  "+n+" : 취소 "+q+"건").join("\n"));}
   if(res.already.length)ln.push("이미 차감됨 "+res.already.length+"건(건너뜀)");
   if(res.noBatch.length)ln.push("배치 ID 없음 "+res.noBatch.length+"건(등록 전 취소라 제외)");
   if(res.notFound.length)ln.push("⚠ 등록된 출고번호를 찾지 못함 "+res.notFound.length+"건: "+res.notFound.join(", ")+"\n  → 이 화면 붙여넣기 이전에 등록한 건이면 위 3번에 '품목명 : 취소 N건'을 직접 입력(추가/취소 반영)하세요.");
@@ -355,7 +355,7 @@ $("cancel-check").addEventListener("click",async()=>{
     const res=MfWmsImport.resolveCancels(snap.val()||{},parsed.rows,catalog);
     cancelPlan={date,slot:$("slot").value,text:$("cancel-text").value};
     $("cancel-save").disabled=!res.matched.length;
-    cancelMsg(res.matched.length?"ok":"warn","저장 차수: "+labels[$("slot").value]+"\n"+describeCancel(res,parsed.rows,parsed.notCancelled.length?"취소 상태가 아닌 행 "+parsed.notCancelled.length+"건 제외":""));
+    cancelMsg(res.matched.length?"ok":"warn",describeCancel(res,parsed.rows,parsed.notCancelled.length?"취소 상태가 아닌 행 "+parsed.notCancelled.length+"건 제외":""));
   }catch(e){cancelMsg("error",e.message)}
 });
 $("cancel-save").addEventListener("click",async()=>{
@@ -370,16 +370,10 @@ $("cancel-save").addEventListener("click",async()=>{
       day=day||{};day.slots=day.slots||{};day.cancelled=day.cancelled||{};
       const res=MfWmsImport.resolveCancels(day,parsed.rows,catalog);result=res;
       if(!res.matched.length)return day;
-      const cur=decodeStoredItems(day.slots[slot]?.items||{});
-      const delta={};
-      for(const m of res.matched){for(const l of m.lines)delta[l.name]=(delta[l.name]||0)-l.qty;(m.keys||[m.id]).forEach(k=>day.cancelled[k]={slot,at,from:m.from});}
-      const keep=day.slots[slot]||{};
-      day.slots[slot]={...keep,label:labels[slot],items:encodeItems(mergeRawItems(cur,delta)),updatedAt:at};
-      const latest=Object.keys(day.slots).filter(k=>labels[k]).sort().at(-1);
-      day.lastStatus=labels[latest]||labels[slot];
+      for(const m of res.matched)day.cancelled[m.id]={at,from:m.from,keys:m.keys||[m.id],lines:m.lines};
       return day;
     });
-    cancelMsg(result&&result.matched.length?"ok":"warn",(result&&result.matched.length?"저장 완료: "+labels[slot]+"에서 "+result.matched.length+"건 차감\n":"차감할 건이 없습니다.\n")+describeCancel(result||{matched:[],already:[],noBatch:[],notFound:[],unknownBarcode:[]},parsed.rows));
+    cancelMsg(result&&result.matched.length?"ok":"warn",(result&&result.matched.length?"저장 완료: "+result.matched.length+"건 취소 등록(현장 화면에 취소·실출고로 표시)\n":"차감할 건이 없습니다.\n")+describeCancel(result||{matched:[],already:[],noBatch:[],notFound:[],unknownBarcode:[]},parsed.rows));
     cancelPlan=null;await loadExisting();
   }catch(e){cancelMsg("error","저장 실패: "+e.message)}
   finally{busy=false}

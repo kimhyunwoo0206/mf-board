@@ -93,3 +93,15 @@ test('shipments are stored by 출고번호 and 운송장 번호, cancels resolve
  assert.equal(resolveCancels(day,c.rows,catalog).already.length,1);
  assert.equal(parseCancel('1069934217\t111111111111\t정상 출고').notCancelled.length,1);
 });
+
+test('cancel list with only waybill numbers (one per line) resolves against stored shipments',()=>{
+ const {parseCancel,resolveCancels}=require('../wms-import');
+ const r=parse();const day={slots:{'1_slot_8':{shipments:r.shipments}}};
+ const c=parseCancel('10334224341002\r\n10334224341003\r\n10334224341002\r\n10334299999999\r\n');
+ assert.deepEqual(c.rows.map(x=>x.id),['10334224341002','10334224341003','10334299999999']);
+ const res=resolveCancels(day,c.rows,catalog);
+ assert.equal(res.matched.length,2);assert.equal(res.notFound.length,1);
+ assert.deepEqual(res.matched[0].lines,[{name:'손질오징어(할복) 500g',qty:1}]);
+ day.cancelled={a:{keys:['10334224341002']}};
+ assert.equal(resolveCancels(day,c.rows,catalog).already.length,1);
+});

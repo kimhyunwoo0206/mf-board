@@ -23,10 +23,10 @@ h1{font-size:clamp(1.25rem,5vw,1.8rem);margin:0}#order-date{font:inherit;font-si
 <body>
 <header class="top"><div class="top-inner">
 <div class="top-line"><h1 id="today-date">MF 현장 작업지시서</h1><div class="controls"><label for="order-date">조회 날짜 <input id="order-date" type="date"></label><a class="admin-button" href="admin.html">수동입력</a><a class="admin-button" href="stock.html">현재고</a><a class="admin-button" href="report.html">기간 집계</a><button class="print-button" type="button" onclick="window.print()">인쇄</button></div></div>
-<div class="summary"><div id="status-banner" class="status-banner" role="status">데이터 대기 중...</div><div class="grand-total">누적 순건수 <strong id="grand-total">—</strong>건</div></div>
+<div class="summary"><div id="status-banner" class="status-banner" role="status">데이터 대기 중...</div><div class="grand-total">실출고 순건수 <strong id="grand-total">—</strong>건</div></div>
 <p id="updated" class="updated"></p>
 </div></header>
-<main><h2 class="section-title">품목군별 작업수량</h2><div id="work-order"></div><p class="print-note">※ 1차·2차·3차·4차는 각 차수 추가 발주수량이며, 누적은 당일 전체 순수량입니다.</p></main>
+<main><h2 class="section-title">품목군별 작업수량</h2><div id="work-order"></div><p class="print-note">※ 1차·2차·3차·4차는 각 차수 추가 발주수량이며, 취소는 배치 생성 후 취소된 수량이며, 실출고(누적)는 당일 발주 합계에서 취소를 뺀 수량입니다.</p></main>
 <script>
 const firebaseConfig={apiKey:"AIzaSyCCpgZGJ21HdGs36tGuvZgF7sPIbRXNPr0",authDomain:"coupang-mf.firebaseapp.com",databaseURL:"https://coupang-mf-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"coupang-mf",storageBucket:"coupang-mf.firebasestorage.app",messagingSenderId:"12362663151",appId:"1:12362663151:web:51e7acce47f166a88b871a",measurementId:"G-JBKQVKJXRE"};
 firebase.initializeApp(firebaseConfig);const db=firebase.database();
@@ -46,12 +46,13 @@ function showDate(){
   const data=snapshot.val(),workOrderEl=document.getElementById('work-order'),statusBanner=document.getElementById('status-banner'),grandTotalEl=document.getElementById('grand-total'),updatedEl=document.getElementById('updated');workOrderEl.replaceChildren();grandTotalEl.textContent='0';updatedEl.textContent='';
   if(data&&data.slots){
    const latestSlot=[...slotOrder].reverse().find(key=>data.slots[key]);statusBanner.innerText=slotStatusLabels[latestSlot]||'진행 중';statusBanner.classList.toggle('closed',latestSlot==='4_slot_13');
-   const byItem={};let grandTotalCount=0,latestUpdate='';
+   const byItem={},byCancel={};let grandTotalCount=0,latestUpdate='';
    slotOrder.forEach(key=>{const slotData=data.slots[key];if(!slotData)return;if(slotData.updatedAt>latestUpdate)latestUpdate=slotData.updatedAt;for(const [storedKey,count] of Object.entries(slotData.items||{})){const name=decodeItemKey(storedKey),val=Number(count)||0;if(!byItem[name])byItem[name]={};byItem[name][key]=(byItem[name][key]||0)+val;grandTotalCount+=val}});
+   for(const c of Object.values(data.cancelled||{}))for(const l of (c&&c.lines)||[]){const q=Number(l.qty)||0;if(!q)continue;byCancel[l.name]=(byCancel[l.name]||0)+q;if(!byItem[l.name])byItem[l.name]={};grandTotalCount-=q}
    const known=new Set(catalog.flatMap(g=>g.items));const groups=catalog.map(g=>({group:g.group,items:g.items.filter(name=>Object.prototype.hasOwnProperty.call(byItem,name))})).filter(g=>g.items.length);const unknown=Object.keys(byItem).filter(name=>!known.has(name)).sort((a,b)=>a.localeCompare(b,'ko'));if(unknown.length)groups.push({group:'기타',items:unknown});
    if(!groups.length)workOrderEl.innerHTML='<div class="empty">표시할 품목이 없습니다.</div>';else{
-    let html='<div class="work-table-wrap"><table class="work-table"><thead><tr><th><span class="desktop-label">품목군</span><span class="mobile-label">군</span></th><th><span class="desktop-label">상품명</span><span class="mobile-label">품목</span></th>'+slotOrder.map(k=>`<th>${slotHeadings[k]}</th>`).join('')+'<th>누적</th></tr></thead><tbody>';
-    groups.forEach(group=>group.items.forEach((name,index)=>{const values=slotOrder.map(k=>Number(byItem[name]?.[k])||0),total=values.reduce((s,v)=>s+v,0);html+=`<tr class="${index===0?'group-start':''}">`;if(index===0)html+=`<th class="group" rowspan="${group.items.length}">${escapeHtml(group.group)}</th>`;html+=`<td class="product">${escapeHtml(displayNames[name]||name)}</td>`+values.map(v=>`<td class="slot ${v===0?'zero':v<0?'cancel':''}">${v===0?'—':v}</td>`).join('')+`<td class="total ${total<0?'cancel':''}">${total}</td></tr>`}));html+='</tbody></table></div>';workOrderEl.innerHTML=html;
+    let html='<div class="work-table-wrap"><table class="work-table"><thead><tr><th><span class="desktop-label">품목군</span><span class="mobile-label">군</span></th><th><span class="desktop-label">상품명</span><span class="mobile-label">품목</span></th>'+slotOrder.map(k=>`<th>${slotHeadings[k]}</th>`).join('')+'<th>취소</th><th>실출고<br>(누적)</th></tr></thead><tbody>';
+    groups.forEach(group=>group.items.forEach((name,index)=>{const values=slotOrder.map(k=>Number(byItem[name]?.[k])||0),cancelQty=byCancel[name]||0,total=values.reduce((s,v)=>s+v,0)-cancelQty;html+=`<tr class="${index===0?'group-start':''}">`;if(index===0)html+=`<th class="group" rowspan="${group.items.length}">${escapeHtml(group.group)}</th>`;html+=`<td class="product">${escapeHtml(displayNames[name]||name)}</td>`+values.map(v=>`<td class="slot ${v===0?'zero':v<0?'cancel':''}">${v===0?'—':v}</td>`).join('')+`<td class="slot ${cancelQty?'cancel':'zero'}">${cancelQty?'−'+cancelQty:'—'}</td><td class="total ${total<0?'cancel':''}">${total}</td></tr>`}));html+='</tbody></table></div>';workOrderEl.innerHTML=html;
    }
    grandTotalEl.textContent=String(grandTotalCount);if(latestUpdate)updatedEl.textContent='마지막 반영: '+new Date(latestUpdate).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
   }else{statusBanner.innerText='아직 등록된 발주가 없습니다.';statusBanner.classList.remove('closed')}
