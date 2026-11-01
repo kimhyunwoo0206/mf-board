@@ -79,10 +79,17 @@ test('shipments are stored by 출고번호 and 운송장 번호, cancels resolve
  const r=parse();const {parseCancel,resolveCancels}=require('../wms-import');
  assert.equal(r.shipments['1002'],'8809929791271:1');assert.equal(r.shipments['10334224341002'],'8809929791271:1');
  const day={slots:{'1_slot_8':{shipments:r.shipments}}};
- const c=parseCancel('1069934217\t1001\t11811\t출고 취소 [CANCELED]\t10334224341002\n-\t222222222222\t출고 취소\t10334224349999\n1069934217\t111111111111\t출고 취소\t10334224341003');
- assert.equal(c.rows.length,3);
+ // 쿠팡 화면처럼 한 건이 여러 줄로 쪼개져 붙여넣어진 경우(운송장이 배치 ID보다 앞줄, 상태 문구가 줄 끝)
+ const txt=['[출고취소]\t쿠팡배송','[새벽배송]\t2.쿠팡_싱글_일반\t10334224341002','2\t1069934217\t1120016665514364929\t11103973384982\t824609689630\t출고 취소',
+  '[출고취소]\t쿠팡배송','[새벽배송]\t2.쿠팡_싱글_일반\t10334224349999','3\t-\t1119912698797117440\t4103967166498\t818112024585\t출고 취소',
+  '[출고취소]\t쿠팡배송','[새벽배송]\t2.쿠팡_싱글_일반\t10334224341003','2\t1069934217\t1119912698797117441\t4103967166499\t818112024586\t출고 취소'].join('\r\n');
+ const c=parseCancel(txt);
+ assert.equal(c.rows.length,3);assert.equal(c.notCancelled.length,0);
+ assert.deepEqual(c.rows.map(x=>x.hasBatch),[true,false,true]);
+ assert.deepEqual(c.rows[0].keys,['824609689630','10334224341002']);
  const res=resolveCancels(day,c.rows,catalog);
  assert.equal(res.matched.length,2);assert.equal(res.noBatch.length,1);assert.equal(res.matched[0].lines[0].name,'손질오징어(할복) 500g');
  day.cancelled={'10334224341002':{}};
  assert.equal(resolveCancels(day,c.rows,catalog).already.length,1);
+ assert.equal(parseCancel('1069934217\t111111111111\t정상 출고').notCancelled.length,1);
 });

@@ -38,7 +38,7 @@
       if(day!==date)badDates.add(day);
       stamps.set(time,(stamps.get(time)||0)+1);
       byBarcode.set(cells[b],(byBarcode.get(cells[b])||0)+quantity);
-      for(const k of [cells[0],cells.find(x=>/^\d{14}$/.test(x))])if(k&&/^\d{4,}$/.test(k)){const m=shipments[k]||(shipments[k]={});m[cells[b]]=(m[cells[b]]||0)+quantity;}
+      for(const k of [cells[0],cells.find(x=>/^103\d{11}$/.test(x))])if(k&&/^\d{4,}$/.test(k)){const m=shipments[k]||(shipments[k]={});m[cells[b]]=(m[cells[b]]||0)+quantity;}
       rowCount++;total+=quantity;
     }
     if(duplicates)errors.push('똑같은 행이 '+duplicates+'개 중복되어 있습니다(출고번호 '+duplicateExample+' 등). 같은 화면을 두 번 붙여넣지 않았는지 확인하고 다시 붙여넣으세요.');
@@ -58,16 +58,22 @@
   // 출고 관리 '출고 취소' 목록: 배치 ID(10자리 또는 '-')와 쉬핑먼트 ID(12자리 = 출고번호)를 읽습니다.
   // 배치 ID가 있는 건만 발주 등록분에서 차감 대상입니다(배치 생성 후 취소). '-'는 등록 전 취소라 제외합니다.
   function parseCancel(text){
-    const out=[],seen=new Set(),skipped=[];let ignored=0;
-    for(const {cells} of lines(text)){
-      const sh=cells.find(x=>/^\d{12}$/.test(x)),wb=cells.find(x=>/^\d{14}$/.test(x)),ship=sh||wb;
-      if(!ship){ignored++;continue;}
-      if(seen.has(ship))continue;seen.add(ship);
-      if(!/cancel|취소/i.test(cells.join(' '))){skipped.push(ship);continue;}
-      const batch=cells.find(x=>/^(\d{10}|-)$/.test(x));
-      out.push({id:ship,keys:[sh,wb].filter(Boolean),hasBatch:!!batch&&batch!=='-',batch:batch&&batch!=='-'?batch:''});
-    }
-    return {rows:out,notCancelled:skipped,ignoredLines:ignored};
+    // 쿠팡 화면은 셀 안에서 줄바꿈이 되어 한 건이 여러 줄로 붙여넣어지므로, 줄이 아니라 '칸(토큰)' 순서로 읽습니다.
+    // 한 건 = 직전 쉬핑먼트 ID 다음 칸부터 이번 쉬핑먼트 ID(12자리)까지. 배치 ID는 그 12자리 바로 앞쪽(계획 출고 ID·주문번호 앞)에 있습니다.
+    const tokens=String(text).replace(/^\uFEFF/,'').split(/\t|\r?\n/).map(x=>x.replace(/^"+|"+$/g,'').trim()).filter(Boolean);
+    const rows=[],seen=new Set(),notCancelled=[];let prev=-1;
+    tokens.forEach((t,i)=>{
+      if(!/^\d{12}$/.test(t))return;
+      const win=tokens.slice(prev+1,i+2);
+      const wb=win.find(x=>/^103\d{11}$/.test(x));
+      let batch='';
+      for(let k=i-1;k>Math.max(prev,i-7);k--){if(/^(\d{10}|-)$/.test(tokens[k])){batch=tokens[k];break;}}
+      prev=i;
+      if(seen.has(t))return;seen.add(t);
+      if(!/cancel|취소/i.test(win.join(' '))){notCancelled.push(t);return;}
+      rows.push({id:t,keys:[t,wb].filter(Boolean),hasBatch:/^\d{10}$/.test(batch),batch:/^\d{10}$/.test(batch)?batch:''});
+    });
+    return {rows,notCancelled,ignoredLines:0};
   }
   // day = mf_orders/{날짜} 저장분. 어느 차수에 등록된 출고번호인지 찾아 차감할 품목·수량을 계산합니다.
   function resolveCancels(day,rows,catalog){
