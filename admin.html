@@ -79,6 +79,7 @@
     <button id="cancel-check" type="button">취소 건 확인</button>
     <button id="cancel-save" type="button" disabled>취소 차감 저장</button>
     <p id="cancel-status" class="status" role="status"></p>
+    <div id="cancel-manual"></div>
   </section>
 </main>
 <script src="pivot-import.js"></script>
@@ -338,13 +339,51 @@ function describeCancel(res,rows,extra){
     ln.push("취소 등록 대상 "+res.matched.length+"건:\n"+Object.entries(sum).map(([n,q])=>"  "+n+" : 취소 "+q+"건").join("\n"));}
   if(res.already.length)ln.push("이미 차감됨 "+res.already.length+"건(건너뜀)");
   if(res.noBatch.length)ln.push("배치 ID 없음 "+res.noBatch.length+"건(등록 전 취소라 제외)");
-  if(res.notFound.length)ln.push("⚠ 등록된 출고번호를 찾지 못함 "+res.notFound.length+"건: "+res.notFound.join(", ")+"\n  → 이 화면 붙여넣기 이전에 등록한 건이면 위 3번에 '품목명 : 취소 N건'을 직접 입력(추가/취소 반영)하세요.");
+  if(res.notFound.length)ln.push("⚠ 등록된 운송장 번호를 찾지 못함 "+res.notFound.length+"건: "+res.notFound.join(", ")+"\n  → 이 기능 이전에 등록한 건입니다. 아래에서 번호마다 품목을 골라 등록하세요.");
   if(res.unknownBarcode.length)ln.push("⚠ 기준표에 없는 바코드 "+res.unknownBarcode.length+"건: "+res.unknownBarcode.join(", "));
   if(extra)ln.push(extra);
   return ln.join("\n");
 }
+// 저장된 운송장 번호가 없는 건(이 기능 이전 등록분): 번호마다 품목을 직접 지정해 취소로 등록합니다.
+function renderManualCancel(ids,catalog){
+  const box=$("cancel-manual");box.replaceChildren();
+  if(!ids.length)return;
+  const title=document.createElement("p");title.className="hint";
+  title.textContent="찾지 못한 운송장 번호는 품목을 직접 골라 등록할 수 있습니다(쿠팡에서 운송장 번호로 검색하면 품목·수량이 나옵니다). 건너뛸 번호는 '선택 안 함'으로 두세요.";
+  box.appendChild(title);
+  const rows=[];
+  for(const id of ids){
+    const line=document.createElement("div");line.style.cssText="display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap";
+    const lab=document.createElement("b");lab.textContent=id;lab.style.minWidth="150px";
+    const sel=document.createElement("select");sel.style.cssText="flex:1;min-width:200px;padding:9px";
+    const none=document.createElement("option");none.value="";none.textContent="선택 안 함";sel.appendChild(none);
+    for(const item of catalog){const o=document.createElement("option");o.value=item.name;o.textContent=item.name;sel.appendChild(o);}
+    const qty=document.createElement("input");qty.type="number";qty.min="1";qty.step="1";qty.value="1";qty.style.cssText="width:70px;padding:9px";
+    line.append(lab,sel,qty);box.appendChild(line);rows.push({id,sel,qty});
+  }
+  const btn=document.createElement("button");btn.type="button";btn.textContent="선택한 품목으로 취소 등록";
+  btn.addEventListener("click",async()=>{
+    const picked=rows.map(r=>({id:r.id,name:r.sel.value,qty:Number(r.qty.value)})).filter(r=>r.name);
+    if(!picked.length)return cancelMsg("error","품목을 선택한 번호가 없습니다.");
+    if(picked.some(r=>!Number.isSafeInteger(r.qty)||r.qty<1))return cancelMsg("error","수량은 1 이상의 정수여야 합니다.");
+    if(busy)return;busy=true;btn.disabled=true;
+    const date=$("date").value,slot=$("slot").value,at=new Date().toISOString();let added=0,skipped=0;
+    try{
+      await db.ref("mf_orders/"+date).transaction(day=>{
+        day=day||{};day.slots=day.slots||{};day.cancelled=day.cancelled||{};added=0;skipped=0;
+        const done=new Set();for(const [k,c] of Object.entries(day.cancelled)){done.add(k);((c&&c.keys)||[]).forEach(x=>done.add(x));}
+        for(const r of picked){if(done.has(r.id)){skipped++;continue;}day.cancelled[r.id]={at,from:slot,keys:[r.id],lines:[{name:r.name,qty:r.qty}],manual:true};added++;}
+        return day;
+      });
+      cancelMsg(added?"ok":"warn","저장 완료: "+added+"건 취소 등록"+(skipped?" (이미 등록된 "+skipped+"건 건너뜀)":"")+" — 현장 화면에서 취소 열과 실출고를 확인하세요.");
+      box.replaceChildren();await loadExisting();
+    }catch(e){cancelMsg("error","저장 실패: "+e.message);btn.disabled=false}
+    finally{busy=false}
+  });
+  box.appendChild(btn);
+}
 $("cancel-check").addEventListener("click",async()=>{
-  cancelPlan=null;$("cancel-save").disabled=true;
+  cancelPlan=null;$("cancel-save").disabled=true;$("cancel-manual").replaceChildren();
   const date=$("date").value;
   if(!validDate(date))return cancelMsg("error","날짜를 선택하세요.");
   try{
@@ -354,6 +393,7 @@ $("cancel-check").addEventListener("click",async()=>{
     const snap=await db.ref("mf_orders/"+date).once("value");
     const res=MfWmsImport.resolveCancels(snap.val()||{},parsed.rows,catalog);
     cancelPlan={date,slot:$("slot").value,text:$("cancel-text").value};
+    renderManualCancel(res.notFound,catalog);
     $("cancel-save").disabled=!res.matched.length;
     cancelMsg(res.matched.length?"ok":"warn",describeCancel(res,parsed.rows,parsed.notCancelled.length?"취소 상태가 아닌 행 "+parsed.notCancelled.length+"건 제외":""));
   }catch(e){cancelMsg("error",e.message)}
