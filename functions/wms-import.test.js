@@ -7,7 +7,7 @@ const catalog=require('./catalog.json');
 const date='2026-11-01';
 // 2026-11-01 쿠팡 WMS 화면 사진을 사람이 옮겨 적은 표본입니다(실시간 데이터가 아님).
 const head='출고번호\t주문 ID\t배치 ID\t운송장 번호\t박스 타입\tSKU ID\tBarcode\t수량\t출고 마감 시간\t재고 위치\t배송구분';
-const row=(no,sku,barcode,qty=1,stamp='2026-11-01 14:00:00.0',loc='672-A1-1-1')=>[no,'118'+no,'1069934217','1033422'+no,'CSTM',sku,barcode,qty,stamp,loc,'쿠팡배송'].join('\t');
+const row=(no,sku,barcode,qty=1,stamp='2026-11-01 14:00:00.0',loc='672-A1-1-1')=>[no,'118'+no,'1069934217','1033422434'+no,'CSTM',sku,barcode,qty,stamp,loc,'쿠팡배송'].join('\t');
 const rows=[
  row('1001','204065303','8809929791202',1,undefined,'672-A1-1-15'),
  row('1002','203690733','8809929791271'),row('1003','203690733','8809929791271'),
@@ -73,4 +73,16 @@ test('actual admin imports a pasted Coupang screen table without a subtotal and 
  assert.ok(h.el('pivot-status').textContent.includes('7건'));assert.ok(h.el('pivot-status').textContent.includes('총 건수를 입력하지 않아'));assert.equal(h.writes(),0);
  h.el('pivot-total').value='9';await h.el('convert').events.click();assert.equal(h.el('raw').value,'');assert.ok(h.el('pivot-status').textContent.includes('다릅니다'));
  h.el('pivot-total').value='7';await h.el('convert').events.click();assert.ok(h.el('raw').value.includes('홍가리비 2.5kg : 3건'));
+});
+
+test('shipments are stored by 출고번호 and 운송장 번호, cancels resolve by either',()=>{
+ const r=parse();const {parseCancel,resolveCancels}=require('../wms-import');
+ assert.equal(r.shipments['1002'],'8809929791271:1');assert.equal(r.shipments['10334224341002'],'8809929791271:1');
+ const day={slots:{'1_slot_8':{shipments:r.shipments}}};
+ const c=parseCancel('1069934217\t1001\t11811\t출고 취소 [CANCELED]\t10334224341002\n-\t222222222222\t출고 취소\t10334224349999\n1069934217\t111111111111\t출고 취소\t10334224341003');
+ assert.equal(c.rows.length,3);
+ const res=resolveCancels(day,c.rows,catalog);
+ assert.equal(res.matched.length,2);assert.equal(res.noBatch.length,1);assert.equal(res.matched[0].lines[0].name,'손질오징어(할복) 500g');
+ day.cancelled={'10334224341002':{}};
+ assert.equal(resolveCancels(day,c.rows,catalog).already.length,1);
 });

@@ -20,7 +20,7 @@
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('날짜를 선택하세요.');
     if(!Array.isArray(catalog))throw new Error('품목 기준표를 불러오지 못했습니다.');
     if(String(text).length>3000000)throw new Error('붙여넣은 내용이 너무 큽니다. 나누어 붙여넣으세요.');
-    const errors=[],byBarcode=new Map(),stamps=new Map(),seen=new Set(),badDates=new Set();
+    const errors=[],byBarcode=new Map(),stamps=new Map(),seen=new Set(),badDates=new Set(),shipments={};
     let rowCount=0,total=0,duplicates=0,duplicateExample='';
     for(const {n,cells} of lines(text)){
       const b=barcodeAt(cells),s=cells.findIndex(x=>STAMP.test(x));
@@ -38,6 +38,7 @@
       if(day!==date)badDates.add(day);
       stamps.set(time,(stamps.get(time)||0)+1);
       byBarcode.set(cells[b],(byBarcode.get(cells[b])||0)+quantity);
+      for(const k of [cells[0],cells.find(x=>/^\d{14}$/.test(x))])if(k&&/^\d{4,}$/.test(k)){const m=shipments[k]||(shipments[k]={});m[cells[b]]=(m[cells[b]]||0)+quantity;}
       rowCount++;total+=quantity;
     }
     if(duplicates)errors.push('똑같은 행이 '+duplicates+'개 중복되어 있습니다(출고번호 '+duplicateExample+' 등). 같은 화면을 두 번 붙여넣지 않았는지 확인하고 다시 붙여넣으세요.');
@@ -50,7 +51,40 @@
       else pendingRows.push({name:barcode,fieldName:barcode,barcode,quantity,status:'신규 SKU 확인 필요'});
     }
     const notes=['쿠팡 화면 표 · 출고 마감 시간 '+[...stamps].sort().map(([t,c])=>t+' ('+c+'행)').join(', ')+' · 바코드 '+byBarcode.size+'종'];
-    return {source:'wms',items,pendingRows,total,sourceTotal:null,dailyTotal:null,errors,selectedRowCount:rowCount,excludedRowCount:0,hasGroups:false,parts:null,notes};
+    const packed={};for(const [id,m] of Object.entries(shipments))packed[id]=Object.entries(m).map(([bc,q])=>bc+':'+q).join(',');
+    return {source:'wms',shipments:packed,items,pendingRows,total,sourceTotal:null,dailyTotal:null,errors,selectedRowCount:rowCount,excludedRowCount:0,hasGroups:false,parts:null,notes};
   }
-  return {looksLikeWms,parseWms};
+
+  // 출고 관리 '출고 취소' 목록: 배치 ID(10자리 또는 '-')와 쉬핑먼트 ID(12자리 = 출고번호)를 읽습니다.
+  // 배치 ID가 있는 건만 발주 등록분에서 차감 대상입니다(배치 생성 후 취소). '-'는 등록 전 취소라 제외합니다.
+  function parseCancel(text){
+    const out=[],seen=new Set(),skipped=[];let ignored=0;
+    for(const {cells} of lines(text)){
+      const sh=cells.find(x=>/^\d{12}$/.test(x)),wb=cells.find(x=>/^\d{14}$/.test(x)),ship=sh||wb;
+      if(!ship){ignored++;continue;}
+      if(seen.has(ship))continue;seen.add(ship);
+      if(!/cancel|취소/i.test(cells.join(' '))){skipped.push(ship);continue;}
+      const batch=cells.find(x=>/^(\d{10}|-)$/.test(x));
+      out.push({id:ship,keys:[sh,wb].filter(Boolean),hasBatch:!!batch&&batch!=='-',batch:batch&&batch!=='-'?batch:''});
+    }
+    return {rows:out,notCancelled:skipped,ignoredLines:ignored};
+  }
+  // day = mf_orders/{날짜} 저장분. 어느 차수에 등록된 출고번호인지 찾아 차감할 품목·수량을 계산합니다.
+  function resolveCancels(day,rows,catalog){
+    const slots=(day&&day.slots)||{},done=(day&&day.cancelled)||{};
+    const res={matched:[],already:[],noBatch:[],notFound:[],unknownBarcode:[]};
+    for(const r of rows){
+      if(!r.hasBatch){res.noBatch.push(r.id);continue;}
+      if((r.keys||[r.id]).some(k=>done[k])){res.already.push(r.id);continue;}
+      let found=null,from='';
+      for(const [k,slot] of Object.entries(slots)){const key=(r.keys||[r.id]).find(q=>slot&&slot.shipments&&slot.shipments[q]);if(key){found=slot.shipments[key];from=k;break;}}
+      if(!found){res.notFound.push(r.id);continue;}
+      const parts=String(found).split(',').map(x=>x.split(':'));
+      const names=[];let bad=false;
+      for(const [bc,q] of parts){const item=catalog.find(x=>x.barcode===bc);if(!item){bad=true;res.unknownBarcode.push(r.id+'('+bc+')');break;}names.push({name:item.name,qty:Number(q)||0});}
+      if(!bad)res.matched.push({id:r.id,keys:r.keys||[r.id],from,lines:names});
+    }
+    return res;
+  }
+  return {looksLikeWms,parseWms,parseCancel,resolveCancels};
 });

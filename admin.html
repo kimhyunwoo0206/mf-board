@@ -72,6 +72,14 @@
     <button id="view" class="secondary" type="button">현장 화면 보기</button>
     <p id="save-status" class="status" role="status"></p>
   </section>
+  <section>
+    <h2>4. 취소 건 등록 (배치 생성 후 취소)</h2>
+    <p class="hint">쿠팡 WMS <b>출고 관리</b>에서 출고 상태를 <b>출고 취소</b>로 검색한 목록을 복사해 붙여넣으세요. <b>배치 ID가 있는 건</b>만 위에서 선택한 차수에 <b>취소(−)</b>로 차감하고, 배치 ID가 <b>-</b>인 건은 등록 전 취소라 제외합니다. 같은 취소를 다시 붙여넣어도 중복 차감하지 않습니다. 차감은 이 화면에서 쿠팡 화면 표를 붙여넣어 저장한 건만 가능합니다.</p>
+    <textarea id="cancel-text" placeholder="출고 관리 &gt; 출고 취소 목록을 여기에 붙여넣으세요"></textarea>
+    <button id="cancel-check" type="button">취소 건 확인</button>
+    <button id="cancel-save" type="button" disabled>취소 차감 저장</button>
+    <p id="cancel-status" class="status" role="status"></p>
+  </section>
 </main>
 <script src="pivot-import.js"></script>
 <script src="wms-import.js"></script>
@@ -217,7 +225,12 @@ async function saveData(isAuto=false){
         const previous=decodeStoredItems(day.slots[slot]?.items||{});
         rawToSave=mergeRawItems(previous,items);
       }
+      const prevShipments=day.slots[slot]?.shipments||{};
       day.slots[slot]={label:labels[slot],items:encodeItems(rawToSave),updatedAt:savedAt};
+      if(importedShipments){
+        day.slots[slot].shipments={...(mode==='merge'?prevShipments:{}),...importedShipments};
+        if(mode!=='merge'&&day.cancelled)for(const [id,c] of Object.entries(day.cancelled))if(c&&c.slot===slot)delete day.cancelled[id];
+      }else if(Object.keys(prevShipments).length&&(mode==='merge'||pivotImported===false))day.slots[slot].shipments=prevShipments;
       if(partsToSave)day.slots[slot].parts=partsToSave;
       if(pending.length)day.slots[slot].pendingSkuRows=pending;
       if(requestId) day.appliedRequests[requestId]=savedAt;
@@ -283,7 +296,7 @@ function applyQuery(){
   return auto&&!!text;
 }
 function invalidatePivot(){
-  if(pivotImported){$("raw").value="";pendingRows=[];pivotImported=false;importedParts=null;updateSummary();$("pivot-status").textContent="붙여넣은 내용·날짜 또는 차수가 바뀌었습니다. 선택한 차수 가져오기를 다시 눌러 주세요.";}
+  if(pivotImported){$("raw").value="";pendingRows=[];pivotImported=false;importedParts=null;importedShipments=null;updateSummary();$("pivot-status").textContent="붙여넣은 내용·날짜 또는 차수가 바뀌었습니다. 선택한 차수 가져오기를 다시 눌러 주세요.";}
 }
 $("convert").addEventListener("click",async()=>{
   if(busy)return;
@@ -300,23 +313,80 @@ $("convert").addEventListener("click",async()=>{
     if(expected!==imported.total)throw new Error("차수 소계 "+expected+"건과 상품 합 "+imported.total+"건이 다릅니다. 모든 행을 다시 복사하세요.");
     if(manual!=="" && imported.sourceTotal!==null && expected!==imported.sourceTotal)throw new Error("직접 입력한 소계와 엑셀 머리글 소계가 다릅니다.");
     $("raw").value=Object.entries(imported.items).map(([name,qty])=>name+" : "+qty+"건").join("\n");
-    pendingRows=imported.pendingRows;pivotImported=true;
+    pendingRows=imported.pendingRows;pivotImported=true;importedShipments=imported.shipments&&Object.keys(imported.shipments).length?imported.shipments:null;
     importedParts=imported.parts?Object.fromEntries(Object.entries(imported.parts).map(([part,p])=>[part,p.items])):null;
     $("mode").value="replace";params.delete("rid");params.delete("commit");
     updateSummary();
     const partInfo=imported.parts?"\n"+Object.entries(imported.parts).map(([part,p])=>part+" "+p.total+"건").join(" + ")+" → 1차로 합산"+(Object.keys(imported.parts).length<2?" (붙여넣지 않은 묶음은 기존 저장분 유지)":""):"";
     $("pivot-status").className="status ok";
     $("pivot-status").textContent=labels[slot]+" 검산 완료: "+imported.selectedRowCount+"행 / "+imported.total+"건 · 다른 차수 제외 "+imported.excludedRowCount+"행"+partInfo+(imported.dailyTotal===null?"":"\n하루 총합 "+imported.dailyTotal+"건 (참고)")+(pendingRows.length?"\n신규 SKU 확인 필요: "+pendingRows.map(r=>r.fieldName+" "+r.quantity+"건").join(", ")+" — 기존 품목만 등록하며 신규 행은 보류합니다.":"")+(imported.notes&&imported.notes.length?"\n"+imported.notes.join("\n"):"")+(imported.source==="wms"&&manual===""?"\n총 건수를 입력하지 않아 화면의 총 건수와 직접 비교해 주세요.":"")+"\n아래 품목과 숫자를 확인한 뒤 저장을 누르세요.";
-  }catch(e){$("raw").value="";pendingRows=[];pivotImported=false;importedParts=null;updateSummary();$("pivot-status").className="status error";$("pivot-status").textContent=e.message;}
+  }catch(e){$("raw").value="";pendingRows=[];pivotImported=false;importedParts=null;importedShipments=null;updateSummary();$("pivot-status").className="status error";$("pivot-status").textContent=e.message;}
   finally{$("convert").disabled=false;}
 });
 $("pivot").addEventListener("input",invalidatePivot);
 $("pivot-total").addEventListener("input",invalidatePivot);
 $("date").addEventListener("change",invalidatePivot);
 $("slot").addEventListener("change",invalidatePivot);
-$("raw").addEventListener("input",()=>{if(pivotImported){pendingRows=[];pivotImported=false;importedParts=null;$("pivot-status").textContent="저장할 목록을 직접 수정했습니다. 원본 소계와 다시 비교해 주세요.";}updateSummary();});
+$("raw").addEventListener("input",()=>{if(pivotImported){pendingRows=[];pivotImported=false;importedParts=null;importedShipments=null;$("pivot-status").textContent="저장할 목록을 직접 수정했습니다. 원본 소계와 다시 비교해 주세요.";}updateSummary();});
 $("date").addEventListener("change",loadExisting);
 $("slot").addEventListener("change",loadExisting);
+// ── 취소 건 등록: 배치 ID가 있는 출고 취소를 선택한 차수에서 차감 ──
+function cancelMsg(cls,t){$("cancel-status").className="status "+cls;$("cancel-status").textContent=t}
+function describeCancel(res,rows,extra){
+  const ln=[];
+  if(res.matched.length){const sum={};res.matched.forEach(m=>m.lines.forEach(l=>sum[l.name]=(sum[l.name]||0)+l.qty));
+    ln.push("차감 대상 "+res.matched.length+"건:\n"+Object.entries(sum).map(([n,q])=>"  "+n+" : 취소 "+q+"건").join("\n"));}
+  if(res.already.length)ln.push("이미 차감됨 "+res.already.length+"건(건너뜀)");
+  if(res.noBatch.length)ln.push("배치 ID 없음 "+res.noBatch.length+"건(등록 전 취소라 제외)");
+  if(res.notFound.length)ln.push("⚠ 등록된 출고번호를 찾지 못함 "+res.notFound.length+"건: "+res.notFound.join(", ")+"\n  → 이 화면 붙여넣기 이전에 등록한 건이면 위 3번에 '품목명 : 취소 N건'을 직접 입력(추가/취소 반영)하세요.");
+  if(res.unknownBarcode.length)ln.push("⚠ 기준표에 없는 바코드 "+res.unknownBarcode.length+"건: "+res.unknownBarcode.join(", "));
+  if(extra)ln.push(extra);
+  return ln.join("\n");
+}
+$("cancel-check").addEventListener("click",async()=>{
+  cancelPlan=null;$("cancel-save").disabled=true;
+  const date=$("date").value;
+  if(!validDate(date))return cancelMsg("error","날짜를 선택하세요.");
+  try{
+    const catalog=await catalogReady;
+    const parsed=MfWmsImport.parseCancel($("cancel-text").value);
+    if(!parsed.rows.length)throw new Error("출고 취소 행(쉬핑먼트 ID 12자리)을 찾지 못했습니다. 출고 관리의 출고 취소 목록을 복사해 붙여넣으세요.");
+    const snap=await db.ref("mf_orders/"+date).once("value");
+    const res=MfWmsImport.resolveCancels(snap.val()||{},parsed.rows,catalog);
+    cancelPlan={date,slot:$("slot").value,text:$("cancel-text").value};
+    $("cancel-save").disabled=!res.matched.length;
+    cancelMsg(res.matched.length?"ok":"warn","저장 차수: "+labels[$("slot").value]+"\n"+describeCancel(res,parsed.rows,parsed.notCancelled.length?"취소 상태가 아닌 행 "+parsed.notCancelled.length+"건 제외":""));
+  }catch(e){cancelMsg("error",e.message)}
+});
+$("cancel-save").addEventListener("click",async()=>{
+  if(!cancelPlan||busy)return;
+  const {date,slot,text}=cancelPlan;
+  if(date!==$("date").value||slot!==$("slot").value||text!==$("cancel-text").value)return cancelMsg("error","날짜·차수·붙여넣기 내용이 바뀌었습니다. 취소 건 확인을 다시 누르세요.");
+  busy=true;$("cancel-save").disabled=true;
+  try{
+    const catalog=await catalogReady,parsed=MfWmsImport.parseCancel(text),at=new Date().toISOString();
+    let result=null;
+    await db.ref("mf_orders/"+date).transaction(day=>{
+      day=day||{};day.slots=day.slots||{};day.cancelled=day.cancelled||{};
+      const res=MfWmsImport.resolveCancels(day,parsed.rows,catalog);result=res;
+      if(!res.matched.length)return day;
+      const cur=decodeStoredItems(day.slots[slot]?.items||{});
+      const delta={};
+      for(const m of res.matched){for(const l of m.lines)delta[l.name]=(delta[l.name]||0)-l.qty;(m.keys||[m.id]).forEach(k=>day.cancelled[k]={slot,at,from:m.from});}
+      const keep=day.slots[slot]||{};
+      day.slots[slot]={...keep,label:labels[slot],items:encodeItems(mergeRawItems(cur,delta)),updatedAt:at};
+      const latest=Object.keys(day.slots).filter(k=>labels[k]).sort().at(-1);
+      day.lastStatus=labels[latest]||labels[slot];
+      return day;
+    });
+    cancelMsg(result&&result.matched.length?"ok":"warn",(result&&result.matched.length?"저장 완료: "+labels[slot]+"에서 "+result.matched.length+"건 차감\n":"차감할 건이 없습니다.\n")+describeCancel(result||{matched:[],already:[],noBatch:[],notFound:[],unknownBarcode:[]},parsed.rows));
+    cancelPlan=null;await loadExisting();
+  }catch(e){cancelMsg("error","저장 실패: "+e.message)}
+  finally{busy=false}
+});
+$("cancel-text").addEventListener("input",()=>{cancelPlan=null;$("cancel-save").disabled=true});
+$("date").addEventListener("change",()=>{cancelPlan=null;$("cancel-save").disabled=true});
+$("slot").addEventListener("change",()=>{cancelPlan=null;$("cancel-save").disabled=true});
 $("save").addEventListener("click",()=>saveData(false));
 $("view").addEventListener("click",()=>location.href=`index.html?date=${encodeURIComponent($("date").value)}`);
 
