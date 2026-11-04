@@ -105,3 +105,9 @@ test('cancel list with only waybill numbers (one per line) resolves against stor
  day.cancelled={a:{keys:['10334224341002']}};
  assert.equal(resolveCancels(day,c.rows,catalog).already.length,1);
 });
+
+test('parseWms returns per-waybill details with batch id for the field screen',()=>{
+ const r=parse();
+ assert.equal(r.details['10334224341002'],'1069934217|1002|8809929791271:1');
+ assert.equal(r.details['10334224341004'],'1069934217|1004|8809929791448:1');
+});

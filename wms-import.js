@@ -20,7 +20,7 @@
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('날짜를 선택하세요.');
     if(!Array.isArray(catalog))throw new Error('품목 기준표를 불러오지 못했습니다.');
     if(String(text).length>3000000)throw new Error('붙여넣은 내용이 너무 큽니다. 나누어 붙여넣으세요.');
-    const errors=[],byBarcode=new Map(),stamps=new Map(),seen=new Set(),badDates=new Set(),shipments={};
+    const errors=[],byBarcode=new Map(),stamps=new Map(),seen=new Set(),badDates=new Set(),shipments={},det={};
     let rowCount=0,total=0,duplicates=0,duplicateExample='';
     for(const {n,cells} of lines(text)){
       const b=barcodeAt(cells),s=cells.findIndex(x=>STAMP.test(x));
@@ -37,6 +37,8 @@
       const [,day,time]=STAMP.exec(cells[s]);
       if(day!==date)badDates.add(day);
       stamps.set(time,(stamps.get(time)||0)+1);
+      {const wb=cells.find(x=>/^103\d{11}$/.test(x))||'',key=wb||cells[0],batch=/^\d{10}$/.test(cells[2]||'')?cells[2]:(cells.find(x=>/^\d{10}$/.test(x))||'');
+       if(/^\d{4,}$/.test(key)){const d=det[key]||(det[key]={b:batch,s:cells[0],l:{}});d.l[cells[b]]=(d.l[cells[b]]||0)+quantity;}}
       byBarcode.set(cells[b],(byBarcode.get(cells[b])||0)+quantity);
       for(const k of [cells[0],cells.find(x=>/^103\d{11}$/.test(x))])if(k&&/^\d{4,}$/.test(k)){const m=shipments[k]||(shipments[k]={});m[cells[b]]=(m[cells[b]]||0)+quantity;}
       rowCount++;total+=quantity;
@@ -52,7 +54,8 @@
     }
     const notes=['쿠팡 화면 표 · 출고 마감 시간 '+[...stamps].sort().map(([t,c])=>t+' ('+c+'행)').join(', ')+' · 바코드 '+byBarcode.size+'종'];
     const packed={};for(const [id,m] of Object.entries(shipments))packed[id]=Object.entries(m).map(([bc,q])=>bc+':'+q).join(',');
-    return {source:'wms',shipments:packed,items,pendingRows,total,sourceTotal:null,dailyTotal:null,errors,selectedRowCount:rowCount,excludedRowCount:0,hasGroups:false,parts:null,notes};
+    const details={};for(const [k,d] of Object.entries(det))details[k]=d.b+'|'+d.s+'|'+Object.entries(d.l).map(([bc,q])=>bc+':'+q).join(',');
+    return {source:'wms',shipments:packed,details,items,pendingRows,total,sourceTotal:null,dailyTotal:null,errors,selectedRowCount:rowCount,excludedRowCount:0,hasGroups:false,parts:null,notes};
   }
 
   // 출고 관리 '출고 취소' 목록: 배치 ID(10자리 또는 '-')와 쉬핑먼트 ID(12자리 = 출고번호)를 읽습니다.

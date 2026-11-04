@@ -35,7 +35,7 @@ function validDate(v){return /^\d{4}-\d{2}-\d{2}$/.test(v)}
 function decodeItemKey(key){if(!String(key).startsWith("k_"))return key;try{let b64=String(key).slice(2).replace(/-/g,"+").replace(/_/g,"/");while(b64.length%4)b64+="=";const binary=atob(b64);return new TextDecoder().decode(Uint8Array.from(binary,c=>c.charCodeAt(0)))}catch(e){return key}}
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char])}
 const dateInput=document.getElementById('order-date');const qp=new URLSearchParams(location.search);const queryDate=qp.get('date');dateInput.value=validDate(queryDate||'')?queryDate:getTodayKST();
-let activeRef=null;
+let activeRef=null,lastData=null,catalogBarcodes=null;
 const slotOrder=['1_slot_8','2_slot_10','3_slot_12','4_slot_13'];
 const slotHeadings={'1_slot_8':'1차','2_slot_10':'2차','3_slot_12':'3차','4_slot_13':'4차'};
 const slotStatusLabels={'1_slot_8':'1차 반영','2_slot_10':'2차 반영','3_slot_12':'3차 반영','4_slot_13':'4차 마감'};
@@ -43,7 +43,7 @@ const {catalog,displayNames}=MfGroups;
 function showDate(){
  if(activeRef)activeRef.off();const selectedDate=dateInput.value;if(!validDate(selectedDate))return;document.getElementById('today-date').innerText=`${selectedDate} MF 현장 작업지시서`;document.querySelector('.admin-button').href=`admin.html?date=${encodeURIComponent(selectedDate)}`;activeRef=db.ref('mf_orders/'+selectedDate);
  activeRef.on('value',snapshot=>{
-  const data=snapshot.val(),workOrderEl=document.getElementById('work-order'),statusBanner=document.getElementById('status-banner'),grandTotalEl=document.getElementById('grand-total'),updatedEl=document.getElementById('updated');workOrderEl.replaceChildren();grandTotalEl.textContent='0';updatedEl.textContent='';
+  const data=snapshot.val();lastData=data;const workOrderEl=document.getElementById('work-order'),statusBanner=document.getElementById('status-banner'),grandTotalEl=document.getElementById('grand-total'),updatedEl=document.getElementById('updated');workOrderEl.replaceChildren();grandTotalEl.textContent='0';updatedEl.textContent='';
   if(data&&data.slots){
    const latestSlot=[...slotOrder].reverse().find(key=>data.slots[key]);statusBanner.innerText=slotStatusLabels[latestSlot]||'진행 중';statusBanner.classList.toggle('closed',latestSlot==='4_slot_13');
    const byItem={},byCancel={};let grandTotalCount=0,latestUpdate='';
@@ -52,12 +52,45 @@ function showDate(){
    const known=new Set(catalog.flatMap(g=>g.items));const groups=catalog.map(g=>({group:g.group,items:g.items.filter(name=>Object.prototype.hasOwnProperty.call(byItem,name))})).filter(g=>g.items.length);const unknown=Object.keys(byItem).filter(name=>!known.has(name)).sort((a,b)=>a.localeCompare(b,'ko'));if(unknown.length)groups.push({group:'기타',items:unknown});
    if(!groups.length)workOrderEl.innerHTML='<div class="empty">표시할 품목이 없습니다.</div>';else{
     let html='<div class="work-table-wrap"><table class="work-table"><thead><tr><th><span class="desktop-label">품목군</span><span class="mobile-label">군</span></th><th><span class="desktop-label">상품명</span><span class="mobile-label">품목</span></th>'+slotOrder.map(k=>`<th>${slotHeadings[k]}</th>`).join('')+'<th>취소</th><th>실출고<br>(누적)</th></tr></thead><tbody>';
-    groups.forEach(group=>group.items.forEach((name,index)=>{const values=slotOrder.map(k=>Number(byItem[name]?.[k])||0),cancelQty=byCancel[name]||0,total=values.reduce((s,v)=>s+v,0)-cancelQty;html+=`<tr class="${index===0?'group-start':''}">`;if(index===0)html+=`<th class="group" rowspan="${group.items.length}">${escapeHtml(group.group)}</th>`;html+=`<td class="product">${escapeHtml(displayNames[name]||name)}</td>`+values.map(v=>`<td class="slot ${v===0?'zero':v<0?'cancel':''}">${v===0?'—':v}</td>`).join('')+`<td class="slot ${cancelQty?'cancel':'zero'}">${cancelQty?'−'+cancelQty:'—'}</td><td class="total ${total<0?'cancel':''}">${total}</td></tr>`}));html+='</tbody></table></div>';workOrderEl.innerHTML=html;
+    groups.forEach(group=>group.items.forEach((name,index)=>{const values=slotOrder.map(k=>Number(byItem[name]?.[k])||0),cancelQty=byCancel[name]||0,total=values.reduce((s,v)=>s+v,0)-cancelQty;html+=`<tr class="${index===0?'group-start':''}">`;if(index===0)html+=`<th class="group" rowspan="${group.items.length}">${escapeHtml(group.group)}</th>`;html+=`<td class="product">${escapeHtml(displayNames[name]||name)}</td>`+values.map((v,i)=>`<td class="slot ${v===0?'zero':v<0?'cancel':''}${v!==0?' clickable':''}"${v!==0?` data-name="${escapeHtml(name)}" data-slot="${slotOrder[i]}" title="눌러서 배치 ID·운송장 번호 보기"`:''}>${v===0?'—':v}</td>`).join('')+`<td class="slot ${cancelQty?'cancel clickable':'zero'}"${cancelQty?` data-name="${escapeHtml(name)}" data-slot="cancel" title="눌러서 취소된 운송장 번호 보기"`:''}>${cancelQty?'−'+cancelQty:'—'}</td><td class="total ${total<0?'cancel':''}">${total}</td></tr>`}));html+='</tbody></table></div>';workOrderEl.innerHTML=html;
    }
    grandTotalEl.textContent=String(grandTotalCount);if(latestUpdate)updatedEl.textContent='마지막 반영: '+new Date(latestUpdate).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
   }else{statusBanner.innerText='아직 등록된 발주가 없습니다.';statusBanner.classList.remove('closed')}
  },error=>{document.getElementById('status-banner').innerText='데이터를 읽지 못했습니다: '+error.message;document.getElementById('grand-total').textContent='—'});
 }
+
+const detailCss=document.createElement('style');detailCss.textContent='.clickable{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}.clickable:hover{background:#eef5ff}.dt-back{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:flex;align-items:center;justify-content:center;padding:12px}.dt-box{background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:86vh;overflow:auto;padding:16px}.dt-box h3{margin:0 0 4px;font-size:1.05rem}.dt-box p{margin:4px 0 10px;color:#4a5b6b;font-size:.88rem}.dt-box table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.dt-box th,.dt-box td{border:1px solid #cfd8e0;padding:6px 8px;text-align:left;font-size:.92rem}.dt-box th{background:#f1f5f9}.dt-box tr.canceled td{color:#b42318;text-decoration:line-through}.dt-btns{display:flex;gap:8px;margin-top:12px}.dt-btns button{flex:1;padding:10px;font-size:1rem;border:0;border-radius:8px;background:#0d4c89;color:#fff}.dt-btns .sec{background:#64748b}@media print{.dt-back{display:none}}';document.head.appendChild(detailCss);
+async function barcodeOf(name){if(!catalogBarcodes){try{const r=await fetch('./functions/catalog.json',{cache:'no-cache'});catalogBarcodes=r.ok?await r.json():[]}catch(e){catalogBarcodes=[]}}return (catalogBarcodes.find(x=>x.name===name)||{}).barcode||''}
+async function showShipDetail(name,slotKey){
+ const data=lastData;if(!data)return;const rows=[];let note='',title=name+' · ';
+ const doneKeys=new Map();for(const [id,c] of Object.entries(data.cancelled||{})){doneKeys.set(id,c);for(const k of (c&&c.keys)||[])doneKeys.set(k,c)}
+ if(slotKey==='cancel'){
+  title+='취소';
+  for(const [id,c] of Object.entries(data.cancelled||{}))for(const l of (c&&c.lines)||[])if(l.name===name)rows.push({batch:'',ship:'',wb:(c.keys&&c.keys[0])||id,qty:Number(l.qty)||0,canceled:true,tag:(slotHeadings[c.from]||'')+(c.manual?' · 직접 등록':'')});
+ }else{
+  title+=(slotHeadings[slotKey]||'')+' 발주';
+  const bc=await barcodeOf(name),slot=(data.slots||{})[slotKey]||{};
+  const pick=(lines)=>{for(const part of String(lines).split(',')){const [b,q]=part.split(':');if(b===bc)return Number(q)||0}return 0};
+  const det=slot.shipDetail||{};
+  if(Object.keys(det).length){
+   for(const [key,val] of Object.entries(det)){const [batch,ship,lines]=String(val).split('|');const q=pick(lines||'');if(q)rows.push({batch,ship,wb:/^103\d{11}$/.test(key)?key:'',qty:q,canceled:doneKeys.has(key)||doneKeys.has(ship)})}
+  }else{
+   const sh=slot.shipments||{},wbKeys=Object.keys(sh).filter(k=>/^103\d{11}$/.test(k)),keys=wbKeys.length?wbKeys:Object.keys(sh);
+   for(const key of keys){const q=pick(sh[key]);if(q)rows.push({batch:'',ship:wbKeys.length?'':key,wb:wbKeys.length?key:'',qty:q,canceled:doneKeys.has(key)})}
+   note='이 차수는 배치 ID가 저장되기 전에 등록되어 운송장 번호만 표시됩니다.';
+  }
+  const shown=rows.reduce((s,r)=>s+r.qty,0),cellQty=Number(((data.slots||{})[slotKey]?.items||{})[Object.keys((data.slots||{})[slotKey]?.items||{}).find(k=>decodeItemKey(k)===name)])||0;
+  if(!rows.length)note='이 차수에는 저장된 배치 ID·운송장 번호가 없습니다(이 기능 이전에 등록했거나 직접 입력한 수량).';
+  else if(shown!==cellQty)note=(note?note+' ':'')+'표시 '+shown+'건 / 차수 수량 '+cellQty+'건 — 나머지는 번호가 저장되지 않은 수량입니다.';
+ }
+ const body=rows.length?'<table><thead><tr><th>배치 ID</th><th>운송장 번호</th><th>수량</th><th>상태</th></tr></thead><tbody>'+rows.map(r=>`<tr class="${r.canceled&&slotKey!=='cancel'?'canceled':''}"><td>${escapeHtml(r.batch||'—')}</td><td>${escapeHtml(r.wb||r.ship||'—')}</td><td>${r.qty}</td><td>${slotKey==='cancel'?escapeHtml(r.tag||'취소'):r.canceled?'취소':''}</td></tr>`).join('')+'</tbody></table>':'';
+ const back=document.createElement('div');back.className='dt-back';
+ back.innerHTML=`<div class="dt-box" role="dialog" aria-modal="true"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(note||(rows.length+'건'))}</p>${body}<div class="dt-btns">${rows.length?'<button type="button" id="dt-copy">운송장 번호 복사</button>':''}<button type="button" class="sec" id="dt-close">닫기</button></div></div>`;
+ document.body.appendChild(back);const close=()=>back.remove();
+ back.addEventListener('click',e=>{if(e.target===back)close()});back.querySelector('#dt-close').addEventListener('click',close);
+ const cp=back.querySelector('#dt-copy');if(cp)cp.addEventListener('click',async()=>{const t=rows.map(r=>[r.batch,r.wb||r.ship].filter(Boolean).join('\t')).join('\n');try{await navigator.clipboard.writeText(t);cp.textContent='복사됨'}catch(e){cp.textContent='복사 실패 — 직접 선택하세요'}});
+}
+document.getElementById('work-order').addEventListener('click',e=>{const td=e.target.closest('td.clickable');if(td&&td.dataset.name)showShipDetail(td.dataset.name,td.dataset.slot)});
 dateInput.addEventListener('change',showDate);showDate();
 </script>
 </body>
