@@ -69,6 +69,7 @@
     <textarea id="raw" placeholder="손질오징어(통) 500g : 6건&#10;생물 물바지락 700g 1개 : 7건&#10;생물 대합 600g 1개 : 취소 1건"></textarea>
     <div id="summary" class="summary">입력 대기</div>
     <button id="save" type="button">저장</button>
+    <button id="restore" type="button" style="margin-top:8px;background:#fff;color:#1f4f99;border:1px solid #1f4f99">직전 상태 복원 (선택한 날짜·차수)</button>
     <button id="view" class="secondary" type="button">현장 화면 보기</button>
     <p id="save-status" class="status" role="status"></p>
   </section>
@@ -196,6 +197,43 @@ function mergeRawItems(base,delta){
   }
   return out;
 }
+function backupPath(date,slot){return "mf_backups/"+date+"/"+slot}
+function slotSummary(v){
+  if(!v?.items)return {count:0,total:0};
+  const raw=decodeStoredItems(v.items);
+  return {count:Object.keys(raw).length,total:Object.values(raw).reduce((a,b)=>a+(Number(b)||0),0)};
+}
+// 덮어쓰기 전 기존 차수 데이터를 이력으로 보관합니다. 실패하면 false.
+async function backupSlot(date,slot,reason){
+  try{
+    const snap=await db.ref("mf_orders/"+date+"/slots/"+slot).once("value");
+    const cur=snap.val();
+    if(!cur?.items)return {ok:true,had:false};
+    await db.ref(backupPath(date,slot)).push({backedUpAt:new Date().toISOString(),reason:reason,data:cur});
+    return {ok:true,had:true,summary:slotSummary(cur)};
+  }catch(e){return {ok:false,error:e.message}}
+}
+async function restoreBackup(){
+  const date=$("date").value,slot=$("slot").value;
+  if(!validDate(date)){alert("발주 날짜를 확인하세요.");return}
+  const st=$("save-status");
+  try{
+    const snap=await db.ref(backupPath(date,slot)).orderByKey().limitToLast(1).once("value");
+    const val=snap.val();
+    if(!val){st.textContent="이 날짜·차수에는 복원할 백업이 없습니다.";st.className="status warn";return}
+    const [key,b]=Object.entries(val)[0];
+    const sum=slotSummary(b.data);
+    const when=new Date(b.backedUpAt).toLocaleString("ko-KR");
+    const now=slotSummary((await db.ref("mf_orders/"+date+"/slots/"+slot).once("value")).val());
+    if(!confirm(`[${labels[slot]}] 직전 상태로 복원합니다.\n\n백업 시각: ${when}\n백업 내용: ${sum.count}품목 / 순 ${sum.total}건\n현재 저장: ${now.count}품목 / 순 ${now.total}건\n\n복원하면 현재 내용은 사라집니다(현재 내용도 백업에 보관됩니다). 진행할까요?`))return;
+    const bk=await backupSlot(date,slot,"restore-before");
+    if(!bk.ok&&!confirm("현재 내용 백업에 실패했습니다("+bk.error+"). 그래도 복원할까요?"))return;
+    await db.ref("mf_orders/"+date+"/slots/"+slot).set(b.data);
+    await db.ref(backupPath(date,slot)+"/"+key).remove();
+    st.textContent=`복원 완료: ${sum.count}품목 / 순 ${sum.total}건 (백업 ${when})`;st.className="status ok";
+    await loadExisting();
+  }catch(e){st.textContent="복원 실패: "+e.message;st.className="status error"}
+}
 async function saveData(isAuto=false){
   if(busy)return false;
   $("save-status").textContent="";
@@ -204,6 +242,23 @@ async function saveData(isAuto=false){
   const {items,errors}=parseInput();
   if(errors.length){ $("save-status").textContent=errors.join(" / ");$("save-status").className="status error";return false; }
   const requestId=(params.get("rid")||"").replace(/[^A-Za-z0-9_-]/g,"").slice(0,80);
+  // 기존 차수에 데이터가 있으면: 교체 저장 시 확인창 → 백업
+  try{
+    const curSnap=await db.ref("mf_orders/"+date+"/slots/"+slot).once("value");
+    const cur=curSnap.val();
+    if(cur?.items){
+      const old=slotSummary(cur);
+      const nw={count:Object.keys(items).length,total:Object.values(items).reduce((a,b)=>a+b,0)};
+      if(mode==="replace"&&!isAuto){
+        const msg=`[${labels[slot]}]에는 이미 ${old.count}품목 / 순 ${old.total}건이 저장되어 있습니다.\n\n이번 입력: ${nw.count}품목 / 순 ${nw.total}건\n\n교체하면 기존 내용은 사라집니다(자동 백업되며 '직전 상태 복원'으로 되돌릴 수 있습니다).\n차수를 잘못 고르지 않았는지 확인하세요.\n\n교체할까요?`;
+        if(!confirm(msg)){$("save-status").textContent="저장을 취소했습니다. (기존 내용 유지)";$("save-status").className="status warn";return false}
+      }
+      const bk=await backupSlot(date,slot,isAuto?"auto":mode);
+      if(!bk.ok&&!confirm("기존 내용 백업에 실패했습니다("+bk.error+").\n백업 없이 계속 저장할까요?")){$("save-status").textContent="백업 실패로 저장을 취소했습니다.";$("save-status").className="status error";return false}
+    }
+  }catch(e){
+    if(!confirm("기존 내용 확인에 실패했습니다("+e.message+").\n그래도 저장할까요?"))return false;
+  }
   busy=true;alreadyApplied=false;$("save").disabled=true;$("save").textContent="저장 중…";
   try{
     const dayRef=db.ref("mf_orders/"+date);
@@ -423,6 +478,7 @@ $("cancel-text").addEventListener("input",()=>{cancelPlan=null;$("cancel-save").
 $("date").addEventListener("change",()=>{cancelPlan=null;$("cancel-save").disabled=true});
 $("slot").addEventListener("change",()=>{cancelPlan=null;$("cancel-save").disabled=true});
 $("save").addEventListener("click",()=>saveData(false));
+$("restore").addEventListener("click",restoreBackup);
 $("view").addEventListener("click",()=>location.href=`index.html?date=${encodeURIComponent($("date").value)}`);
 
 (async()=>{
